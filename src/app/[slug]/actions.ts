@@ -1,0 +1,133 @@
+"use server";
+
+import prisma from "@/lib/prisma";
+
+type OrderInput = {
+  storeId: string;
+  customerName: string;
+  customerPhone: string;
+  cep: string;
+  street: string;
+  number: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  paymentMethod: string;
+  changeFor: string | null;
+  observation: string;
+  deliveryFee: number;
+  items: { productId: string; name: string; quantity: number; price: number }[];
+  subtotal: number;
+};
+
+export async function createOrder(input: OrderInput) {
+  // 1. Upsert the customer (find or create by phone + storeId)
+  const cleanPhone = input.customerPhone.replace(/\D/g, "");
+  
+  const customer = await prisma.customer.upsert({
+    where: {
+      storeId_phone: {
+        storeId: input.storeId,
+        phone: cleanPhone,
+      },
+    },
+    update: { name: input.customerName },
+    create: {
+      storeId: input.storeId,
+      name: input.customerName,
+      phone: cleanPhone,
+    },
+  });
+
+  // 2. Calculate total
+  const totalAmount = input.subtotal + input.deliveryFee;
+
+  // 3. Create the order with items
+  const order = await prisma.order.create({
+    data: {
+      storeId: input.storeId,
+      customerId: customer.id,
+      totalAmount,
+      deliveryFee: input.deliveryFee,
+      cep: input.cep,
+      street: input.street,
+      number: input.number,
+      neighborhood: input.neighborhood,
+      complement: input.complement || null,
+      city: input.city,
+      state: input.state,
+      paymentMethod: input.paymentMethod,
+      changeFor: input.paymentMethod === "CASH" && input.changeFor 
+        ? parseFloat(input.changeFor.replace(",", ".")) 
+        : null,
+      observation: input.observation || null,
+      items: {
+        create: input.items.map(item => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+      },
+    },
+    include: {
+      items: {
+        include: { product: true }
+      }
+    }
+  });
+
+  // 4. Send WhatsApp notification to the store
+  try {
+    const store = await prisma.store.findUnique({
+      where: { id: input.storeId },
+      select: { phone: true }
+    });
+
+    // Build order message
+    const itemsText = order.items.map(i => 
+      `  • ${i.quantity}x ${i.product.name} — R$ ${(i.price * i.quantity).toFixed(2).replace(".", ",")}`
+    ).join("\n");
+
+    const paymentLabels: Record<string, string> = {
+      PIX: "PIX",
+      CARD: "Cartão (Máquininha)",
+      CASH: "Dinheiro"
+    };
+
+    let message = `🛒 *NOVO PEDIDO #${order.id.slice(-6).toUpperCase()}*\n\n`;
+    message += `👤 *Cliente:* ${input.customerName}\n`;
+    message += `📱 *WhatsApp:* ${input.customerPhone}\n\n`;
+    message += `📦 *Itens:*\n${itemsText}\n\n`;
+    message += `💰 Subtotal: R$ ${input.subtotal.toFixed(2).replace(".", ",")}\n`;
+    message += `🚚 Entrega: R$ ${input.deliveryFee.toFixed(2).replace(".", ",")}\n`;
+    message += `✅ *TOTAL: R$ ${totalAmount.toFixed(2).replace(".", ",")}*\n\n`;
+    message += `📍 *Endereço:*\n${input.street}, ${input.number}`;
+    if (input.complement) message += ` - ${input.complement}`;
+    message += `\n${input.neighborhood}, ${input.city}/${input.state}\nCEP: ${input.cep}\n\n`;
+    message += `💳 *Pagamento:* ${paymentLabels[input.paymentMethod] || input.paymentMethod}`;
+    if (input.paymentMethod === "CASH" && input.changeFor) {
+      message += ` (Troco para R$ ${input.changeFor})`;
+    }
+    if (input.observation) {
+      message += `\n\n📝 *Obs:* ${input.observation}`;
+    }
+
+    // Call the WhatsApp service
+    await fetch(`${process.env.WHATSAPP_SERVICE_URL || "http://localhost:3001"}/api/send-message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        storeId: input.storeId,
+        toPhone: store?.phone || "",
+        message,
+        secret: process.env.API_SECRET,
+      }),
+    });
+  } catch (err) {
+    console.error("Erro ao enviar WhatsApp:", err);
+    // Don't throw — the order was saved successfully even if WhatsApp fails
+  }
+
+  return { orderId: order.id };
+}

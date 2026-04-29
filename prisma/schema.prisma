@@ -1,0 +1,316 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// NEXTAUTH MODELS
+// -----------------------------------------------------------------------------
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  
+  accounts      Account[]
+  sessions      Session[]
+  
+  // Relação com a loja que o usuário gerencia (Dono / Funcionario)
+  storeId       String?
+  store         Store?    @relation(fields: [storeId], references: [id])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// -----------------------------------------------------------------------------
+// TENANT (Lojas)
+// -----------------------------------------------------------------------------
+
+model Store {
+  id              String   @id @default(cuid())
+  slug            String   @unique // app.site.com/slug
+  name            String
+  phone           String?
+  logo            String?
+  coverImage      String?
+  description     String?
+  isActive        Boolean  @default(true)
+  
+  // Configurações
+  currency        String   @default("BRL")
+  openStatus      Boolean  @default(true) // Lojista pode abrir/fechar manualmente
+  baseDeliveryFee Float    @default(0)    // Taxa de entrega padrão fixa
+  
+  // Chatbot WhatsApp
+  welcomeMessage  String?  @db.Text       // Mensagem de boas-vindas personalizável
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relações
+  users           User[]
+  categories      Category[]
+  products        Product[]
+  orders          Order[]
+  customers       Customer[]
+  couriers        Courier[]
+  deliveryCities  DeliveryCity[]
+  deliveryAreas   DeliveryArea[]
+  operatingHours  OperatingHour[]
+}
+
+// -----------------------------------------------------------------------------
+// CONFIGURAÇÕES DA LOJA (Áreas de Entrega e Horários)
+// -----------------------------------------------------------------------------
+
+model DeliveryCity {
+  id          String   @id @default(cuid())
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  name        String   // Ex: "Salvador", "Lauro de Freitas"
+  isActive    Boolean  @default(true)
+  
+  blacklistedNeighborhoods DeliveryArea[]
+  
+  createdAt   DateTime @default(now())
+  
+  @@unique([storeId, name])
+}
+
+model DeliveryArea {
+  id              String       @id @default(cuid())
+  storeId         String
+  store           Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  deliveryCityId  String
+  deliveryCity    DeliveryCity @relation(fields: [deliveryCityId], references: [id], onDelete: Cascade)
+  
+  name            String   // Nome do bairro bloqueado
+  isActive        Boolean  @default(true)
+  
+  createdAt       DateTime @default(now())
+  
+  @@unique([deliveryCityId, name])
+}
+
+model OperatingHour {
+  id        String   @id @default(cuid())
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  dayOfWeek Int      // 0 = Domingo, 1 = Segunda, etc
+  openTime  String   // "18:00"
+  closeTime String   // "23:59"
+  isActive  Boolean  @default(true)
+}
+
+// -----------------------------------------------------------------------------
+// CARDÁPIO (Categorias, Produtos e Complementos)
+// -----------------------------------------------------------------------------
+
+model Category {
+  id        String    @id @default(cuid())
+  storeId   String
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  name      String
+  order     Int       @default(0) // Ordenação no cardápio
+  isActive  Boolean   @default(true)
+  
+  products  Product[]
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  name        String
+  description String?
+  price       Float
+  image       String?
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  
+  addons      AddonCategory[]
+  orderItems  OrderItem[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Categorias de complementos. Ex: "Escolha o tamanho", "Adicionais"
+model AddonCategory {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  name        String
+  isRequired  Boolean  @default(false)
+  minSelect   Int      @default(0)
+  maxSelect   Int      @default(1)
+  
+  options     AddonOption[]
+}
+
+model AddonOption {
+  id              String        @id @default(cuid())
+  addonCategoryId String
+  addonCategory   AddonCategory @relation(fields: [addonCategoryId], references: [id], onDelete: Cascade)
+  
+  name            String
+  price           Float         @default(0)
+  
+  orderItemAddons OrderItemAddon[]
+}
+
+// -----------------------------------------------------------------------------
+// LOGÍSTICA (Clientes, Entregadores, Pedidos)
+// -----------------------------------------------------------------------------
+
+model Customer {
+  id        String   @id @default(cuid())
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  name      String
+  phone     String   // Identificador principal via WhatsApp
+  
+  orders    Order[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([storeId, phone]) // Um cliente por telefone por loja
+}
+
+model Courier {
+  id        String   @id @default(cuid())
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  name      String
+  phone     String
+  plate     String?   // Placa do veículo
+  isActive  Boolean  @default(true)
+  
+  orders    Order[]
+  
+  createdAt DateTime @default(now())
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  PREPARING
+  READY
+  DISPATCHED
+  DELIVERED
+  CANCELED
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  storeId         String
+  store           Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customerId      String
+  customer        Customer    @relation(fields: [customerId], references: [id])
+  courierId       String?
+  courier         Courier?    @relation(fields: [courierId], references: [id])
+  
+  status          OrderStatus @default(PENDING)
+  totalAmount     Float       // Valor total = subtotal + taxa de entrega
+  deliveryFee     Float       @default(0)
+  
+  // Endereço de entrega
+  cep             String
+  street          String
+  number          String
+  neighborhood    String
+  complement      String?
+  city            String
+  state           String
+  
+  // Pagamento
+  paymentMethod   String      // "CASH", "PIX", "CARD"
+  changeFor       Float?      // Troco para (em caso de dinheiro)
+  
+  // Observação do cliente
+  observation     String?     @db.Text
+  
+  // Rejeição
+  cancelReason    String?
+  
+  items           OrderItem[]
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  
+  quantity  Int
+  price     Float    // Preço unitário do produto na hora da compra
+  
+  addons    OrderItemAddon[]
+}
+
+model OrderItemAddon {
+  id            String      @id @default(cuid())
+  orderItemId   String
+  orderItem     OrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  addonOptionId String
+  addonOption   AddonOption @relation(fields: [addonOptionId], references: [id])
+  
+  price         Float       // Preço do adicional na hora da compra
+}

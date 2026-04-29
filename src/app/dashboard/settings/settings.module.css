@@ -1,0 +1,151 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  max-width: 800px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.title {
+  font-size: 1.5rem;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.fullWidth {
+  grid-column: 1 / -1;
+}
+
+.switchContainer {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 2rem;
+}
+
+.switchText {
+  flex: 1;
+}
+
+.switchText h3 {
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.switchText p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.toggleSwitch {
+  position: relative;
+  width: 54px;
+  height: 30px;
+  background-color: var(--error);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.toggleSwitch.active {
+  background-color: var(--success);
+}
+
+.toggleKnob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  background-color: white;
+  border-radius: 50%;
+  transition: var(--transition);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.toggleSwitch.active .toggleKnob {
+  transform: translateX(24px);
+}
+
+.cardTitle {
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.listItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.listItemInfo h4 {
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.listItemInfo p {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.btnDanger {
+  color: var(--error);
+  font-weight: 500;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--error-bg);
+  transition: var(--transition);
+}
+
+.btnDanger:hover {
+  background: var(--error);
+  color: white;
+}
+
+.formRow {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px dashed var(--border);
+}
