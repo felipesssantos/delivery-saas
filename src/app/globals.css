@@ -22,6 +22,8 @@
   --error-bg: #fef2f2;
   --warning: #f59e0b;
   --warning-bg: #fffbeb;
+  --info: #3b82f6;
+  --info-bg: #eff6ff;
 
   /* Borders & Shadows */
   --border: #e2e8f0;
@@ -54,6 +56,7 @@
     --text-tertiary: #64748b;
     
     --primary-light: rgba(240, 90, 40, 0.1);
+    --info-bg: rgba(59, 130, 246, 0.1);
   }
 }
 

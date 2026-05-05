@@ -16,11 +16,14 @@ const STATES = {
   MENU_SENT: 'MENU_SENT',
 };
 
+import MessageQueue from './message-queue.js';
+
 export default class Chatbot {
   constructor(nextjsUrl) {
     this.nextjsUrl = nextjsUrl || 'http://localhost:3000';
     this.conversations = new Map(); // key: `${storeId}:${phone}` → conversation data
     this.storeCache = new Map();    // key: storeId → { data, cachedAt }
+    this.queue = new MessageQueue(); // Instância da fila de mensagens
 
     // Limpar conversas expiradas a cada 5 minutos
     setInterval(() => this.cleanExpiredConversations(), 5 * 60 * 1000);
@@ -233,15 +236,17 @@ export default class Chatbot {
   }
 
   /**
-   * Helper para enviar texto
+   * Helper para enviar texto usando a FILA de segurança
    */
   async sendText(sock, jid, text) {
     try {
       // Garantir JID correto
       const fullJid = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`;
-      await sock.sendMessage(fullJid, { text });
+      const storeId = sock.storeId || 'unknown'; // O storeId deve estar injetado no sock
+      
+      await this.queue.enqueue(sock, storeId, fullJid, { text });
     } catch (err) {
-      console.error('[Chatbot] Erro ao enviar mensagem:', err.message);
+      console.error('[Chatbot] Erro ao agendar mensagem na fila:', err.message);
     }
   }
 

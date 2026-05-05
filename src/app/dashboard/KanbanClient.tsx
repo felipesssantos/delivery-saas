@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { updateOrderStatus, assignCourierAndDispatch, cancelOrder } from "./actions";
+import { openCashier } from "./cashier/actions";
 
 type OrderItem = {
   id: string;
@@ -49,7 +50,15 @@ const PAYMENT_LABELS: Record<string, string> = {
   CASH: "Dinheiro",
 };
 
-export default function KanbanClient({ orders, couriers }: { orders: Order[]; couriers: Courier[] }) {
+export default function KanbanClient({ 
+  orders, 
+  couriers, 
+  isCashierOpen 
+}: { 
+  orders: Order[]; 
+  couriers: Courier[];
+  isCashierOpen: boolean;
+}) {
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [loadingOrderId, setLoadingOrderId] = useState<string | null>(null);
   
@@ -58,6 +67,29 @@ export default function KanbanClient({ orders, couriers }: { orders: Order[]; co
   const [selectedCourierId, setSelectedCourierId] = useState("");
 
   const handleAdvance = async (orderId: string, currentStatus: string, nextStatus: string) => {
+    // 1. Trava de segurança: Se for aceitar pedido e o caixa estiver fechado
+    if (nextStatus === "ACCEPTED" && !isCashierOpen) {
+      const confirmOpen = confirm("⚠️ O Caixa está FECHADO. Deseja abrir o caixa agora para aceitar este pedido?");
+      if (confirmOpen) {
+        const val = prompt("Digite o valor inicial do caixa (R$):", "0");
+        if (val !== null) {
+          try {
+            setLoadingOrderId(orderId);
+            await openCashier(parseFloat(val.replace(",", ".")) || 0);
+            // Após abrir o caixa, continua para aceitar o pedido
+          } catch (err: any) {
+            alert("Erro ao abrir caixa: " + err.message);
+            setLoadingOrderId(null);
+            return;
+          }
+        } else {
+          return; // Cancelou o prompt do valor
+        }
+      } else {
+        return; // Cancelou a abertura
+      }
+    }
+
     // If moving from READY to DISPATCHED, show courier selection
     if (currentStatus === "READY") {
       setDispatchOrderId(orderId);

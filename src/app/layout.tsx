@@ -6,6 +6,8 @@ export const metadata: Metadata = {
   description: "Gerencie seu delivery via WhatsApp",
 };
 
+import { Providers } from "@/components/Providers";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -14,7 +16,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body>
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
