@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { updateOrderStatus, assignCourierAndDispatch, cancelOrder } from "./actions";
 import { openCashier } from "./cashier/actions";
 
@@ -65,6 +66,36 @@ export default function KanbanClient({
   // Courier selection modal
   const [dispatchOrderId, setDispatchOrderId] = useState<string | null>(null);
   const [selectedCourierId, setSelectedCourierId] = useState("");
+
+  const router = useRouter();
+  const prevPendingCount = useRef(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // 1. Inicializar áudio e Polling para novos pedidos
+  useEffect(() => {
+    // Som de notificação (Campainha de recepção)
+    audioRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
+
+    // Atualizar a página a cada 15 segundos para buscar novos pedidos
+    const interval = setInterval(() => {
+      router.refresh();
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [router]);
+
+  // 2. Monitorar novos pedidos PENDING para tocar o som
+  useEffect(() => {
+    const pendingOrders = orders.filter(o => o.status === "PENDING");
+    const currentCount = pendingOrders.length;
+
+    // Se o número de pendentes aumentou, toca o som
+    if (currentCount > prevPendingCount.current) {
+      audioRef.current?.play().catch(e => console.log("Erro ao tocar áudio (autoplay bloqueado):", e));
+    }
+
+    prevPendingCount.current = currentCount;
+  }, [orders]);
 
   const handleAdvance = async (orderId: string, currentStatus: string, nextStatus: string) => {
     // 1. Trava de segurança: Se for aceitar pedido e o caixa estiver fechado
