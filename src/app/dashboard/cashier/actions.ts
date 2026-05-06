@@ -40,6 +40,20 @@ export async function closeCashier(cashRegisterId: string) {
   const session = await auth();
   if (!session?.user?.storeId) throw new Error("Não autorizado");
 
+  // Verificar se existem pedidos pendentes vinculados a este caixa
+  const pendingOrdersCount = await prisma.order.count({
+    where: {
+      cashRegisterId,
+      status: {
+        notIn: ["DELIVERED", "CANCELED"]
+      }
+    }
+  });
+
+  if (pendingOrdersCount > 0) {
+    throw new Error(`Não é possível fechar o caixa. Você possui ${pendingOrdersCount} pedido(s) em andamento. Conclua ou cancele-os primeiro.`);
+  }
+
   // Buscar pedidos vinculados a este caixa para calcular faturamento
   const orders = await prisma.order.findMany({
     where: {
