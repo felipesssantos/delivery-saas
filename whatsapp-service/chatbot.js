@@ -12,15 +12,19 @@ const CONVERSATION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutos
 // Estados do fluxo
 const STATES = {
   WELCOME: 'WELCOME',
+  WAITING_NAME: 'WAITING_NAME',
   WAITING_CEP: 'WAITING_CEP',
   MENU_SENT: 'MENU_SENT',
 };
+
+import MessageQueue from './message-queue.js';
 
 export default class Chatbot {
   constructor(nextjsUrl) {
     this.nextjsUrl = nextjsUrl || 'http://localhost:3000';
     this.conversations = new Map(); // key: `${storeId}:${phone}` → conversation data
     this.storeCache = new Map();    // key: storeId → { data, cachedAt }
+    this.queue = new MessageQueue(); // Instância da fila de mensagens
 
     // Limpar conversas expiradas a cada 5 minutos
     setInterval(() => this.cleanExpiredConversations(), 5 * 60 * 1000);
@@ -40,13 +44,14 @@ export default class Chatbot {
       this.conversations.delete(key);
     }
 
-    // Detectar se é um CEP (8 números ou 5+3 com hífen)
-    const looksLikeCep = /^\d{8}$/.test(text) || /^\d{5}-\d{3}$/.test(text);
+    // Detectar se há um CEP na mensagem (ex: 40010000 ou 40010-000)
+    const cepMatch = text.match(/\b\d{5}-?\d{3}\b/);
+    const foundCep = cepMatch ? cepMatch[0] : null;
 
     let conversation = this.conversations.get(key);
 
-    // Se parecer um CEP e já estivermos conversando, forçar o estado para processar o CEP
-    if (looksLikeCep && conversation && conversation.state === STATES.MENU_SENT) {
+    // Se encontramos um CEP e já estamos conversando, pular para o processamento do CEP
+    if (foundCep && conversation) {
       conversation.state = STATES.WAITING_CEP;
     }
 
@@ -54,8 +59,8 @@ export default class Chatbot {
     if (!conversation) {
       conversation = {
         storeId,
-        state: looksLikeCep ? STATES.WAITING_CEP : STATES.WELCOME,
-        data: {},
+        state: foundCep ? STATES.WAITING_CEP : STATES.WELCOME,
+        data: { foundCep }, // Armazenar o CEP se já veio na primeira mensagem
         lastActivity: Date.now(),
       };
       this.conversations.set(key, conversation);
@@ -91,8 +96,13 @@ export default class Chatbot {
         await this.handleWelcome(sock, senderPhone, store, conversation);
         break;
 
+      case STATES.WAITING_NAME:
+        await this.handleName(sock, senderPhone, text, store, conversation);
+        break;
+
       case STATES.WAITING_CEP:
-        await this.handleCep(sock, senderPhone, text, store, conversation);
+        const cepToProcess = foundCep || text;
+        await this.handleCep(sock, senderPhone, cepToProcess, store, conversation);
         break;
 
       case STATES.MENU_SENT:
@@ -106,23 +116,33 @@ export default class Chatbot {
   }
 
   /**
-   * Estado: WELCOME — Envia boas-vindas e pede o CEP
+   * Estado: WELCOME — Identifica o cliente ou pede o nome
    */
   async handleWelcome(sock, senderPhone, storeData, conversation) {
-    const customMessage = storeData.welcomeMessage;
-
-    let message;
-    if (customMessage) {
-      message = customMessage
-        .replace(/{nome_loja}/gi, storeData.name)
-        .replace(/{nome}/gi, storeData.name);
+    const customer = await this.getCustomerData(storeData.id, senderPhone);
+    
+    if (customer) {
+      conversation.data.name = customer.name;
+      const msg = `Olá, *${customer.name}*! 👋 Que bom ver você de volta na *${storeData.name}*! 😊\n\n` +
+                 `Deseja fazer um novo pedido? Para começar, informe seu *CEP* para verificarmos a entrega:`;
+      await this.sendText(sock, senderPhone, msg);
+      conversation.state = STATES.WAITING_CEP;
     } else {
-      message = `Olá! 👋 Bem-vindo(a) à *${storeData.name}*!\n\nÉ muito bom ter você aqui! 😊`;
+      const msg = `Olá! 👋 Bem-vindo(a) à *${storeData.name}*!\n\nPara iniciarmos seu atendimento, como posso te chamar? (Digite seu nome)`;
+      await this.sendText(sock, senderPhone, msg);
+      conversation.state = STATES.WAITING_NAME;
     }
+  }
 
-    message += `\n\nPara verificarmos se entregamos na sua região, por favor me informe seu *CEP* (apenas números).\n\nExemplo: *40010000*`;
+  /**
+   * Estado: WAITING_NAME — Recebe o nome e pede o CEP
+   */
+  async handleName(sock, senderPhone, text, storeData, conversation) {
+    const name = text.split(' ')[0]; // Pega apenas o primeiro nome para ser mais pessoal
+    conversation.data.name = name;
 
-    await this.sendText(sock, senderPhone, message);
+    const msg = `Prazer em te conhecer, *${name}*! 🙌\n\nAgora, por favor, me informe seu *CEP* (apenas números) para verificarmos se entregamos na sua região.`;
+    await this.sendText(sock, senderPhone, msg);
     conversation.state = STATES.WAITING_CEP;
   }
 
@@ -211,6 +231,20 @@ export default class Chatbot {
   }
 
   /**
+   * Busca dados do cliente pelo telefone
+   */
+  async getCustomerData(storeId, phone) {
+    try {
+      const res = await fetch(`${this.nextjsUrl}/api/customer/by-phone?storeId=${storeId}&phone=${phone}`);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      console.error(`[Chatbot] Erro ao buscar cliente ${phone}:`, err.message);
+      return null;
+    }
+  }
+
+  /**
    * Busca dados da loja na API interna do Next.js (com cache de 5 min)
    */
   async getStoreData(storeId) {
@@ -233,15 +267,17 @@ export default class Chatbot {
   }
 
   /**
-   * Helper para enviar texto
+   * Helper para enviar texto usando a FILA de segurança
    */
   async sendText(sock, jid, text) {
     try {
       // Garantir JID correto
       const fullJid = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`;
-      await sock.sendMessage(fullJid, { text });
+      const storeId = sock.storeId || 'unknown'; // O storeId deve estar injetado no sock
+      
+      await this.queue.enqueue(sock, storeId, fullJid, { text });
     } catch (err) {
-      console.error('[Chatbot] Erro ao enviar mensagem:', err.message);
+      console.error('[Chatbot] Erro ao agendar mensagem na fila:', err.message);
     }
   }
 

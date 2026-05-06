@@ -58,6 +58,8 @@ export default class BaileysManager {
       generateHighQualityLinkPreview: false,
       defaultQueryTimeoutMs: 60000,
     });
+    
+    sock.storeId = storeId; // Injetar ID para uso na fila do chatbot
 
     sock.ev.on('creds.update', async () => {
       try {
@@ -188,7 +190,12 @@ export default class BaileysManager {
       jid = result.jid;
     }
     
-    await sock.sendMessage(jid, { text: message });
+    // Usar a fila do chatbot para enviar, se disponível
+    if (this.chatbot && this.chatbot.queue) {
+      await this.chatbot.queue.enqueue(sock, storeId, jid, { text: message });
+    } else {
+      await sock.sendMessage(jid, { text: message });
+    }
   }
 
   async deleteSession(storeId) {

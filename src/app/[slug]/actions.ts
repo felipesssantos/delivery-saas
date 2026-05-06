@@ -43,11 +43,21 @@ export async function createOrder(input: OrderInput) {
   // 2. Calculate total
   const totalAmount = input.subtotal + input.deliveryFee;
 
-  // 3. Create the order with items
+  // 3. Find active cashier for this store
+  const activeCashier = await prisma.cashRegister.findFirst({
+    where: {
+      storeId: input.storeId,
+      status: "OPEN"
+    },
+    select: { id: true }
+  });
+
+  // 4. Create the order with items
   const order = await prisma.order.create({
     data: {
       storeId: input.storeId,
       customerId: customer.id,
+      cashRegisterId: activeCashier?.id || null,
       totalAmount,
       deliveryFee: input.deliveryFee,
       cep: input.cep,

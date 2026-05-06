@@ -11,8 +11,23 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
+  // 1. Buscar caixa ativo
+  const activeCashier = await prisma.cashRegister.findFirst({
+    where: { storeId, status: "OPEN" },
+    select: { id: true }
+  });
+
+  // 2. Buscar pedidos
+  // Filtro: Mostrar todos os pedidos em andamento 
+  // + pedidos finalizados (DELIVERED/CANCELED) APENAS se forem do caixa atual
   const orders = await prisma.order.findMany({
-    where: { storeId },
+    where: { 
+      storeId,
+      OR: [
+        { status: { notIn: ["DELIVERED", "CANCELED"] } },
+        { cashRegisterId: activeCashier?.id || "NONE" } // Se não tem caixa, não mostra concluídos
+      ]
+    },
     orderBy: { createdAt: "desc" },
     include: {
       customer: { select: { name: true, phone: true } },
@@ -27,5 +42,11 @@ export default async function DashboardPage() {
     select: { id: true, name: true },
   });
 
-  return <KanbanClient orders={orders} couriers={couriers} />;
+  return (
+    <KanbanClient 
+      orders={orders} 
+      couriers={couriers} 
+      isCashierOpen={!!activeCashier} 
+    />
+  );
 }

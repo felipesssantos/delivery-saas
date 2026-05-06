@@ -38,6 +38,11 @@ model Session {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+enum Role {
+  USER
+  ADMIN
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -52,6 +57,8 @@ model User {
   // Relação com a loja que o usuário gerencia (Dono / Funcionario)
   storeId       String?
   store         Store?    @relation(fields: [storeId], references: [id])
+  
+  role          Role      @default(USER)
 }
 
 model VerificationToken {
@@ -97,6 +104,7 @@ model Store {
   deliveryCities  DeliveryCity[]
   deliveryAreas   DeliveryArea[]
   operatingHours  OperatingHour[]
+  cashRegisters   CashRegister[]
 }
 
 // -----------------------------------------------------------------------------
@@ -142,6 +150,28 @@ model OperatingHour {
   openTime  String   // "18:00"
   closeTime String   // "23:59"
   isActive  Boolean  @default(true)
+}
+
+// -----------------------------------------------------------------------------
+// FINANCEIRO (Caixa)
+// -----------------------------------------------------------------------------
+
+model CashRegister {
+  id           String    @id @default(cuid())
+  storeId      String
+  store        Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  openedAt     DateTime  @default(now())
+  closedAt     DateTime?
+  initialValue Float     @default(0)
+  finalValue   Float?
+  
+  status       String    @default("OPEN") // "OPEN", "CLOSED"
+  
+  orders       Order[]
+  
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 // -----------------------------------------------------------------------------
@@ -262,6 +292,8 @@ model Order {
   customer        Customer    @relation(fields: [customerId], references: [id])
   courierId       String?
   courier         Courier?    @relation(fields: [courierId], references: [id])
+  cashRegisterId  String?
+  cashRegister    CashRegister? @relation(fields: [cashRegisterId], references: [id])
   
   status          OrderStatus @default(PENDING)
   totalAmount     Float       // Valor total = subtotal + taxa de entrega

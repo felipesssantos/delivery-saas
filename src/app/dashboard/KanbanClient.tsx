@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { updateOrderStatus, assignCourierAndDispatch, cancelOrder } from "./actions";
+import { openCashier } from "./cashier/actions";
 
 type OrderItem = {
   id: string;
@@ -49,7 +51,15 @@ const PAYMENT_LABELS: Record<string, string> = {
   CASH: "Dinheiro",
 };
 
-export default function KanbanClient({ orders, couriers }: { orders: Order[]; couriers: Courier[] }) {
+export default function KanbanClient({ 
+  orders, 
+  couriers, 
+  isCashierOpen 
+}: { 
+  orders: Order[]; 
+  couriers: Courier[];
+  isCashierOpen: boolean;
+}) {
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [loadingOrderId, setLoadingOrderId] = useState<string | null>(null);
   
@@ -57,7 +67,60 @@ export default function KanbanClient({ orders, couriers }: { orders: Order[]; co
   const [dispatchOrderId, setDispatchOrderId] = useState<string | null>(null);
   const [selectedCourierId, setSelectedCourierId] = useState("");
 
+  const router = useRouter();
+  const prevPendingCount = useRef(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // 1. Inicializar áudio e Polling para novos pedidos
+  useEffect(() => {
+    // Som de notificação (Campainha de recepção)
+    audioRef.current = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
+
+    // Atualizar a página a cada 15 segundos para buscar novos pedidos
+    const interval = setInterval(() => {
+      router.refresh();
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [router]);
+
+  // 2. Monitorar novos pedidos PENDING para tocar o som
+  useEffect(() => {
+    const pendingOrders = orders.filter(o => o.status === "PENDING");
+    const currentCount = pendingOrders.length;
+
+    // Se o número de pendentes aumentou, toca o som
+    if (currentCount > prevPendingCount.current) {
+      audioRef.current?.play().catch(e => console.log("Erro ao tocar áudio (autoplay bloqueado):", e));
+    }
+
+    prevPendingCount.current = currentCount;
+  }, [orders]);
+
   const handleAdvance = async (orderId: string, currentStatus: string, nextStatus: string) => {
+    // 1. Trava de segurança: Se for aceitar pedido e o caixa estiver fechado
+    if (nextStatus === "ACCEPTED" && !isCashierOpen) {
+      const confirmOpen = confirm("⚠️ O Caixa está FECHADO. Deseja abrir o caixa agora para aceitar este pedido?");
+      if (confirmOpen) {
+        const val = prompt("Digite o valor inicial do caixa (R$):", "0");
+        if (val !== null) {
+          try {
+            setLoadingOrderId(orderId);
+            await openCashier(parseFloat(val.replace(",", ".")) || 0);
+            // Após abrir o caixa, continua para aceitar o pedido
+          } catch (err: any) {
+            alert("Erro ao abrir caixa: " + err.message);
+            setLoadingOrderId(null);
+            return;
+          }
+        } else {
+          return; // Cancelou o prompt do valor
+        }
+      } else {
+        return; // Cancelou a abertura
+      }
+    }
+
     // If moving from READY to DISPATCHED, show courier selection
     if (currentStatus === "READY") {
       setDispatchOrderId(orderId);
