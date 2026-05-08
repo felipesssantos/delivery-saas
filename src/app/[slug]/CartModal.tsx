@@ -125,12 +125,20 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
         changeFor: paymentMethod === "CASH" ? changeFor : null,
         observation,
         deliveryFee: deliveryFee || 0,
-        items: cart.map(item => ({
-          productId: item.product.id,
-          name: item.product.name,
-          quantity: item.quantity,
-          price: item.product.price,
-        })),
+        items: cart.map(item => {
+          const flatAddons = Object.values(item.selectedOptions || {}).flat();
+          return {
+            productId: item.product.id,
+            name: item.product.name,
+            quantity: item.quantity,
+            price: item.finalPrice,
+            addons: flatAddons.map(opt => ({
+              id: opt.id,
+              name: opt.name,
+              price: opt.price
+            }))
+          };
+        }),
         subtotal: total,
       });
 
@@ -183,29 +191,36 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
                 </div>
               ) : (
                 <>
-                  {cart.map(item => (
-                    <div key={item.product.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+                  {cart.map(item => {
+                    const flatAddons = Object.values(item.selectedOptions || {}).flat();
+                    return (
+                    <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
                       <div style={{ flex: 1 }}>
                         <h4 style={{ fontWeight: 600 }}>{item.product.name}</h4>
+                        {flatAddons.length > 0 && (
+                          <p style={{ color: "var(--text-secondary)", fontSize: "0.8rem", marginBottom: "0.2rem" }}>
+                            {flatAddons.map(a => a.name).join(", ")}
+                          </p>
+                        )}
                         <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>
-                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.product.price)}
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.finalPrice)}
                         </p>
                       </div>
                       
                       <div style={{ display: "flex", alignItems: "center", gap: "1rem", backgroundColor: "var(--background)", borderRadius: "var(--radius-full)", padding: "0.25rem" }}>
                         {item.quantity === 1 ? (
                           <button 
-                            onClick={() => { if (window.confirm("Deseja realmente remover este item da sacola?")) onRemove(item.product.id); }} 
-                            style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--error-light)", color: "var(--error)", fontSize: "1rem" }}
+                            onClick={() => { if (window.confirm("Deseja realmente remover este item da sacola?")) onRemove(item.id); }} 
+                            style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--error-light)", color: "var(--error)", fontSize: "1rem", border: "none", cursor: "pointer" }}
                           >🗑️</button>
                         ) : (
-                          <button onClick={() => onUpdateQuantity(item.product.id, -1)} style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold" }}>-</button>
+                          <button onClick={() => onUpdateQuantity(item.id, -1)} style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold", border: "none", cursor: "pointer" }}>-</button>
                         )}
                         <span style={{ fontWeight: 600, minWidth: "1rem", textAlign: "center" }}>{item.quantity}</span>
-                        <button onClick={() => onUpdateQuantity(item.product.id, 1)} style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold", color: "var(--primary)" }}>+</button>
+                        <button onClick={() => onUpdateQuantity(item.id, 1)} style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold", color: "var(--primary)", border: "none", cursor: "pointer" }}>+</button>
                       </div>
                     </div>
-                  ))}
+                  )})}
 
                   <div style={{ marginTop: "1rem", paddingTop: "1.5rem", borderTop: "1px dashed var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: "1.1rem", color: "var(--text-secondary)" }}>Total</span>
@@ -255,7 +270,7 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                   <label className="label">Complemento</label>
-                  <input type="text" className="input-field" value={complement} onChange={e => setComplement(e.target.value)} placeholder="Apto, Casa 2..." />
+                  <input type="text" className="input-field" value={complement} onChange={e => setComplement(e.target.value)} maxLength={50} placeholder="Apto, Casa 2..." />
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", gridColumn: "1 / -1" }}>
@@ -297,9 +312,10 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
               )}
 
               <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginTop: "1rem" }}>Observações</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
                 <label className="label">Algum detalhe adicional para o pedido?</label>
-                <textarea className="input-field" value={observation} onChange={e => setObservation(e.target.value)} placeholder="Ex: Tirar cebola do hambúrguer, maionese à parte, etc." rows={2} />
+                <textarea className="input-field" value={observation} onChange={e => setObservation(e.target.value)} maxLength={200} placeholder="Ex: Tirar cebola do hambúrguer, maionese à parte, etc." rows={2} />
+                <span style={{ fontSize: "0.7rem", color: observation.length >= 180 ? "var(--error)" : "var(--text-tertiary)", textAlign: "right" }}>{observation.length}/200</span>
               </div>
 
               <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginTop: "1rem" }}>Pagamento</h3>

@@ -45,11 +45,28 @@ export default async function StorePage({ params }: { params: Promise<{ slug: st
       products: {
         where: { isActive: true },
         orderBy: { order: "asc" },
+        include: {
+          addonLinks: {
+            include: {
+              addonCategory: {
+                include: { options: true }
+              }
+            }
+          }
+        }
       },
     },
   });
-
-  const populatedCategories = categories.filter(c => c.products.length > 0);
+  // Transform addonLinks to the flat "addons" format the StoreClient expects
+  const populatedCategories = categories
+    .filter(c => c.products.length > 0)
+    .map(cat => ({
+      ...cat,
+      products: cat.products.map(prod => ({
+        ...prod,
+        addons: prod.addonLinks.map(link => link.addonCategory),
+      }))
+    }));
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "var(--background)", paddingBottom: "100px" }}>

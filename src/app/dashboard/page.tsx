@@ -32,7 +32,12 @@ export default async function DashboardPage() {
     include: {
       customer: { select: { name: true, phone: true } },
       courier: { select: { name: true } },
-      items: { include: { product: { select: { name: true } } } },
+      items: { 
+        include: { 
+          product: { select: { name: true } },
+          addons: { include: { addonOption: { select: { name: true } } } }
+        } 
+      },
     },
   });
 

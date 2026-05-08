@@ -3,12 +3,31 @@
 import { useState, useEffect, useRef } from "react";
 import CartModal from "./CartModal";
 
-type Product = {
+import ProductAddonModal from "./ProductAddonModal";
+
+export type AddonOption = {
+  id: string;
+  name: string;
+  price: number;
+};
+
+export type AddonCategory = {
+  id: string;
+  name: string;
+  isRequired: boolean;
+  minSelect: number;
+  maxSelect: number;
+  pricingMethod: "SUM" | "AVERAGE" | "HIGHEST";
+  options: AddonOption[];
+};
+
+export type Product = {
   id: string;
   name: string;
   description: string | null;
   price: number;
   image: string | null;
+  addons: AddonCategory[];
 };
 
 type Category = {
@@ -18,8 +37,11 @@ type Category = {
 };
 
 export type CartItem = {
+  id: string; // Unique id for cart entry
   product: Product;
   quantity: number;
+  selectedOptions: Record<string, AddonOption[]>;
+  finalPrice: number;
 };
 
 export type DeliveryConfig = {
@@ -51,6 +73,7 @@ export default function StoreClient({ store, categories, deliveryConfig }: { sto
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
   // Collapsible categories
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
@@ -114,29 +137,31 @@ export default function StoreClient({ store, categories, deliveryConfig }: { sto
     }
   };
 
-  const handleAddToCart = (product: Product) => {
-    setCart(prev => {
-      const existing = prev.find(item => item.product.id === product.id);
-      if (existing) {
-        return prev.map(item => 
-          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
+  const handleAddToCart = (product: Product, selectedOptions: Record<string, AddonOption[]> = {}, finalPrice: number, quantity: number = 1) => {
+    setCart(prev => [
+      ...prev,
+      {
+        id: Math.random().toString(36).substring(7),
+        product,
+        quantity,
+        selectedOptions,
+        finalPrice
       }
-      return [...prev, { product, quantity: 1 }];
-    });
+    ]);
+    setSelectedProduct(null); // Close modal if open
   };
 
-  const handleUpdateQuantity = (productId: string, delta: number) => {
+  const handleUpdateQuantity = (cartItemId: string, delta: number) => {
     setCart(prev => prev.map(item => {
-      if (item.product.id === productId) {
+      if (item.id === cartItemId) {
         return { ...item, quantity: item.quantity + delta };
       }
       return item;
     }).filter(item => item.quantity > 0));
   };
 
-  const handleRemoveFromCart = (productId: string) => {
-    setCart(prev => prev.filter(item => item.product.id !== productId));
+  const handleRemoveFromCart = (cartItemId: string) => {
+    setCart(prev => prev.filter(item => item.id !== cartItemId));
   };
 
   const fetchOrders = async () => {
@@ -156,7 +181,7 @@ export default function StoreClient({ store, categories, deliveryConfig }: { sto
     }
   };
 
-  const cartTotal = cart.reduce((total, item) => total + (item.product.price * item.quantity), 0);
+  const cartTotal = cart.reduce((total, item) => total + (item.finalPrice * item.quantity), 0);
   const cartItemsCount = cart.reduce((count, item) => count + item.quantity, 0);
 
   // Filter products by search
@@ -379,18 +404,25 @@ export default function StoreClient({ store, categories, deliveryConfig }: { sto
                             {cartItem ? (
                               <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", backgroundColor: "var(--background)", borderRadius: "2rem", padding: "0.2rem 0.4rem", border: "1px solid var(--border)" }}>
                                 <button
-                                  onClick={() => handleUpdateQuantity(product.id, -1)}
+                                  onClick={() => handleUpdateQuantity(cartItem.id, -1)}
                                   style={{ width: "26px", height: "26px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold", fontSize: "1.1rem", color: "var(--text-secondary)" }}
                                 >-</button>
                                 <span style={{ fontWeight: 600, minWidth: "1rem", textAlign: "center", fontSize: "0.9rem" }}>{cartItem.quantity}</span>
                                 <button
-                                  onClick={() => handleUpdateQuantity(product.id, 1)}
+                                  onClick={() => handleUpdateQuantity(cartItem.id, 1)}
                                   style={{ width: "26px", height: "26px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold", fontSize: "1.1rem", color: "var(--primary)" }}
                                 >+</button>
                               </div>
                             ) : (
                               <button
-                                onClick={() => store.openStatus ? handleAddToCart(product) : alert("A loja está fechada no momento.")}
+                                onClick={() => {
+                                  if (!store.openStatus) return alert("A loja está fechada no momento.");
+                                  if (product.addons && product.addons.length > 0) {
+                                    setSelectedProduct(product);
+                                  } else {
+                                    handleAddToCart(product, {}, product.price, 1);
+                                  }
+                                }}
                                 style={{
                                   padding: "0.5rem", borderRadius: "50%", width: "36px", height: "36px",
                                   display: "flex", alignItems: "center", justifyContent: "center",
@@ -447,6 +479,15 @@ export default function StoreClient({ store, categories, deliveryConfig }: { sto
           onRemove={handleRemoveFromCart}
           onClearCart={() => setCart([])}
           deliveryConfig={deliveryConfig}
+        />
+      )}
+
+      {/* PRODUCT ADDON MODAL */}
+      {selectedProduct && (
+        <ProductAddonModal
+          product={selectedProduct}
+          onClose={() => setSelectedProduct(null)}
+          onAddToCart={handleAddToCart}
         />
       )}
 

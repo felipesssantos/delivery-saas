@@ -105,6 +105,7 @@ model Store {
   deliveryAreas   DeliveryArea[]
   operatingHours  OperatingHour[]
   cashRegisters   CashRegister[]
+  addonCategories AddonCategory[]
 }
 
 // -----------------------------------------------------------------------------
@@ -207,25 +208,44 @@ model Product {
   isActive    Boolean  @default(true)
   order       Int      @default(0)
   
-  addons      AddonCategory[]
+  addonLinks  ProductAddonCategory[]
   orderItems  OrderItem[]
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
-// Categorias de complementos. Ex: "Escolha o tamanho", "Adicionais"
+enum AddonPricingMethod {
+  SUM
+  AVERAGE
+  HIGHEST
+}
+
+// Grupos de Complementos Globais (pertencem à Loja)
 model AddonCategory {
-  id          String   @id @default(cuid())
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id            String             @id @default(cuid())
+  storeId       String
+  store         Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
   
-  name        String
-  isRequired  Boolean  @default(false)
-  minSelect   Int      @default(0)
-  maxSelect   Int      @default(1)
+  name          String
+  isRequired    Boolean            @default(false)
+  minSelect     Int                @default(0)
+  maxSelect     Int                @default(1)
+  pricingMethod AddonPricingMethod @default(SUM)
   
-  options     AddonOption[]
+  options       AddonOption[]
+  productLinks  ProductAddonCategory[]
+}
+
+// Tabela intermediária: Produto <-> Grupo de Complemento (N:N)
+model ProductAddonCategory {
+  id              String        @id @default(cuid())
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  addonCategoryId String
+  addonCategory   AddonCategory @relation(fields: [addonCategoryId], references: [id], onDelete: Cascade)
+  
+  @@unique([productId, addonCategoryId])
 }
 
 model AddonOption {

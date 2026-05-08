@@ -3,8 +3,30 @@
 import { useState } from "react";
 import CategoryForm from "./CategoryForm";
 import ProductForm from "./ProductForm";
+import ProductAddonsManager from "./ProductAddonsManager";
 
 // Types derived from Prisma schema
+type AddonOption = {
+  id: string;
+  name: string;
+  price: number;
+};
+
+type AddonCategory = {
+  id: string;
+  name: string;
+  isRequired: boolean;
+  minSelect: number;
+  maxSelect: number;
+  pricingMethod: "SUM" | "AVERAGE" | "HIGHEST";
+  options: AddonOption[];
+};
+
+type AddonLink = {
+  addonCategoryId: string;
+  addonCategory: AddonCategory;
+};
+
 type Product = {
   id: string;
   name: string;
@@ -12,6 +34,7 @@ type Product = {
   price: number;
   image: string | null;
   isActive: boolean;
+  addonLinks: AddonLink[];
 };
 
 type Category = {
@@ -21,7 +44,7 @@ type Category = {
   products: Product[];
 };
 
-export default function MenuClient({ initialCategories }: { initialCategories: Category[] }) {
+export default function MenuClient({ initialCategories, addonCategories }: { initialCategories: Category[]; addonCategories: AddonCategory[] }) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const selectedCategory = initialCategories.find(c => c.id === selectedCategoryId) || null;
 
@@ -32,7 +55,11 @@ export default function MenuClient({ initialCategories }: { initialCategories: C
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
 
-  // Category Actions
+  const [addonsProductId, setAddonsProductId] = useState<string | null>(null);
+  
+  const allProducts = initialCategories.flatMap(c => c.products);
+  const addonsProduct = allProducts.find(p => p.id === addonsProductId) || null;
+
   const handleOpenCategoryModal = (category?: Category) => {
     setCategoryToEdit(category || null);
     setIsCategoryModalOpen(true);
@@ -43,7 +70,6 @@ export default function MenuClient({ initialCategories }: { initialCategories: C
     setCategoryToEdit(null);
   };
 
-  // Product Actions
   const handleOpenProductModal = (product?: Product) => {
     setProductToEdit(product || null);
     setIsProductModalOpen(true);
@@ -155,15 +181,23 @@ export default function MenuClient({ initialCategories }: { initialCategories: C
                       <span style={{ fontSize: "0.7rem", background: "var(--error-light)", color: "var(--error)", padding: "0.1rem 0.4rem", borderRadius: "1rem" }}>Inativo</span>
                     )}
                   </div>
-                  <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem", marginBottom: "0.5rem", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                  <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem", marginBottom: "0.25rem", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                     {product.description || "Sem descrição"}
                   </p>
                   <p style={{ fontWeight: 700, color: "var(--primary)" }}>
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(product.price)}
                   </p>
+                  {product.addonLinks.length > 0 && (
+                    <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
+                      📎 {product.addonLinks.map(l => l.addonCategory.name).join(", ")}
+                    </p>
+                  )}
                 </div>
 
-                <div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  <button onClick={() => setAddonsProductId(product.id)} className="btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.875rem", background: "var(--primary-light)", color: "var(--primary)", borderColor: "var(--primary)" }}>
+                    Complementos
+                  </button>
                   <button onClick={() => handleOpenProductModal(product)} className="btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.875rem" }}>
                     Editar
                   </button>
@@ -181,6 +215,14 @@ export default function MenuClient({ initialCategories }: { initialCategories: C
 
       {isProductModalOpen && selectedCategory && (
         <ProductForm product={productToEdit} categoryId={selectedCategory.id} onClose={handleCloseProductModal} />
+      )}
+
+      {addonsProduct && (
+        <ProductAddonsManager 
+          product={addonsProduct} 
+          allAddonCategories={addonCategories}
+          onClose={() => setAddonsProductId(null)} 
+        />
       )}
     </div>
   );

@@ -10,6 +10,7 @@ type OrderItem = {
   quantity: number;
   price: number;
   product: { name: string };
+  addons?: { addonOption: { name: string } }[];
 };
 
 type Order = {
@@ -241,15 +242,20 @@ export default function KanbanClient({
                         <div>
                           <strong>Itens:</strong>
                           {order.items.map(item => (
-                            <div key={item.id} style={{ color: "var(--text-secondary)", marginLeft: "0.5rem" }}>
-                              {item.quantity}x {item.product.name} — R$ {(item.price * item.quantity).toFixed(2).replace(".", ",")}
+                            <div key={item.id} style={{ color: "var(--text-secondary)", marginLeft: "0.5rem", marginBottom: "0.25rem" }}>
+                              <div>{item.quantity}x {item.product.name} — R$ {(item.price * item.quantity).toFixed(2).replace(".", ",")}</div>
+                              {item.addons && item.addons.length > 0 && (
+                                <div style={{ fontSize: "0.75rem", paddingLeft: "1.2rem", fontStyle: "italic" }}>
+                                  └ {item.addons.map(a => a.addonOption.name).join(", ")}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
                         {order.deliveryFee > 0 && <div>🚚 Entrega: R$ {order.deliveryFee.toFixed(2).replace(".", ",")}</div>}
                         <div>
                           <strong>📍 Endereço:</strong>
-                          <div style={{ color: "var(--text-secondary)", marginLeft: "0.5rem" }}>
+                          <div style={{ color: "var(--text-secondary)", marginLeft: "0.5rem", wordBreak: "break-word", overflowWrap: "anywhere" }}>
                             {order.street}, {order.number}{order.complement && ` - ${order.complement}`}
                             <br/>{order.neighborhood}, {order.city}/{order.state}
                           </div>
@@ -260,7 +266,7 @@ export default function KanbanClient({
                         <div>📱 {order.customer.phone}</div>
                         {order.courier && <div>🏍️ Entregador: <strong>{order.courier.name}</strong></div>}
                         {order.observation && (
-                          <div style={{ backgroundColor: "var(--background)", padding: "0.5rem", borderRadius: "var(--radius-sm)", fontStyle: "italic" }}>
+                          <div style={{ backgroundColor: "var(--background)", padding: "0.5rem", borderRadius: "var(--radius-sm)", fontStyle: "italic", wordBreak: "break-word", overflowWrap: "anywhere" }}>
                             📝 {order.observation}
                           </div>
                         )}

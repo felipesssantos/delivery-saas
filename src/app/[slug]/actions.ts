@@ -17,7 +17,13 @@ type OrderInput = {
   changeFor: string | null;
   observation: string;
   deliveryFee: number;
-  items: { productId: string; name: string; quantity: number; price: number }[];
+  items: { 
+    productId: string; 
+    name: string; 
+    quantity: number; 
+    price: number;
+    addons: { id: string; name: string; price: number }[];
+  }[];
   subtotal: number;
 };
 
@@ -77,12 +83,23 @@ export async function createOrder(input: OrderInput) {
           productId: item.productId,
           quantity: item.quantity,
           price: item.price,
+          addons: {
+            create: item.addons.map(addon => ({
+              addonOptionId: addon.id,
+              price: addon.price
+            }))
+          }
         })),
       },
     },
     include: {
       items: {
-        include: { product: true }
+        include: { 
+          product: true,
+          addons: {
+            include: { addonOption: true }
+          }
+        }
       }
     }
   });
@@ -95,9 +112,14 @@ export async function createOrder(input: OrderInput) {
     });
 
     // Build order message
-    const itemsText = order.items.map(i => 
-      `  • ${i.quantity}x ${i.product.name} — R$ ${(i.price * i.quantity).toFixed(2).replace(".", ",")}`
-    ).join("\n");
+    const itemsText = order.items.map(i => {
+      let text = `  • ${i.quantity}x ${i.product.name} — R$ ${(i.price * i.quantity).toFixed(2).replace(".", ",")}`;
+      if (i.addons && i.addons.length > 0) {
+        const addonNames = i.addons.map(a => a.addonOption.name).join(", ");
+        text += `\n    └ ${addonNames}`;
+      }
+      return text;
+    }).join("\n");
 
     const paymentLabels: Record<string, string> = {
       PIX: "PIX",

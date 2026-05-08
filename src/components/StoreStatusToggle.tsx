@@ -17,9 +17,21 @@ export default function StoreStatusToggle() {
 
   const handleToggle = async () => {
     if (isOpen === null || isToggling) return;
+
+    const newStatus = !isOpen;
+
+    // Alerta ao ABRIR a loja
+    if (newStatus === true) {
+      const confirmed = window.confirm(
+        "⚠️ Antes de abrir a loja, certifique-se de que o WhatsApp Bot está conectado e funcionando corretamente.\n\n" +
+        "Acesse a aba \"WhatsApp Bot\" no menu e utilize o botão \"Testar Robô\" para enviar uma mensagem de teste.\n\n" +
+        "Deseja abrir a loja agora?"
+      );
+      if (!confirmed) return;
+    }
+
     try {
       setIsToggling(true);
-      const newStatus = !isOpen;
       await toggleStoreStatus(newStatus);
       setIsOpen(newStatus);
     } catch {

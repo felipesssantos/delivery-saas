@@ -18,7 +18,7 @@ const io = new Server(server, {
   }
 });
 
-const chatbot = new Chatbot(process.env.NEXTJS_URL || 'http://localhost:3000');
+const chatbot = new Chatbot(process.env.NEXTJS_URL || 'http://127.0.0.1:3000');
 const manager = new BaileysManager(io, chatbot);
 
 // Socket.io Connection Handler

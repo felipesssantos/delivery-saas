@@ -18,8 +18,20 @@ export default async function MenuPage() {
     include: {
       products: {
         orderBy: { order: "asc" },
+        include: {
+          addonLinks: {
+            include: { addonCategory: { include: { options: true } } }
+          }
+        }
       },
     },
+  });
+
+  // Fetch all global addon categories for the store (for the linker modal)
+  const addonCategories = await prisma.addonCategory.findMany({
+    where: { storeId },
+    include: { options: { orderBy: { name: "asc" } } },
+    orderBy: { name: "asc" },
   });
 
   return (
@@ -29,7 +41,7 @@ export default async function MenuPage() {
         <p style={{ color: "var(--text-secondary)" }}>Gerencie suas categorias e produtos.</p>
       </div>
 
-      <MenuClient initialCategories={categories} />
+      <MenuClient initialCategories={categories} addonCategories={addonCategories} />
     </div>
   );
 }

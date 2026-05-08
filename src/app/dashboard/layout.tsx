@@ -17,6 +17,7 @@ export default function DashboardLayout({
   const navItems = [
     { name: 'Painel de Pedidos', href: '/dashboard' },
     { name: 'Cardápio', href: '/dashboard/menu' },
+    { name: 'Complementos', href: '/dashboard/complements' },
     { name: 'Fluxo de Caixa', href: '/dashboard/cashier' },
     { name: 'Relatórios', href: '/dashboard/reports' },
     { name: 'Entregas', href: '/dashboard/delivery' },

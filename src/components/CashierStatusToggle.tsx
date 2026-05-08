@@ -22,6 +22,8 @@ export default function CashierStatusToggle() {
 
   useEffect(() => {
     fetchStatus();
+    const interval = setInterval(fetchStatus, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleToggle = async () => {
