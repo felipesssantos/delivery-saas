@@ -19,18 +19,34 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
+        const email = (credentials.email as string).trim();
+        const password = credentials.password as string;
+
+        console.log("LOGIN ATTEMPT:", email);
+
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string }
+          where: { email: email }
         });
 
+        console.log("USER FOUND:", !!user);
         if (!user || !user.password) return null;
 
         const passwordsMatch = await bcrypt.compare(
-          credentials.password as string,
+          password,
           user.password
         );
 
-        if (passwordsMatch) return user;
+        console.log("PASSWORD MATCH:", passwordsMatch);
+        if (passwordsMatch) {
+          // Em NextAuth v5, o objeto retornado não pode ter classes/dados não serializáveis.
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            storeId: user.storeId
+          };
+        }
 
         return null;
       }
