@@ -91,6 +91,19 @@ model Store {
   // Chatbot WhatsApp
   welcomeMessage  String?  @db.Text       // Mensagem de boas-vindas personalizável
   
+  // Uber Direct
+  uberDirectEnabled  Boolean  @default(false)
+  
+  // Endereço da loja (pickup para Uber Direct)
+  storeStreet        String?
+  storeNumber        String?
+  storeNeighborhood  String?
+  storeCity          String?
+  storeState         String?
+  storeCep           String?
+  storeLatitude      Float?
+  storeLongitude     Float?
+  
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -337,6 +350,11 @@ model Order {
   
   // Rejeição
   cancelReason    String?
+  
+  // Uber Direct
+  uberDeliveryId  String?
+  uberTrackingUrl String?
+  uberDeliveryFee Float?
   
   items           OrderItem[]
   

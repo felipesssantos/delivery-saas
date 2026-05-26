@@ -84,7 +84,43 @@ export async function deleteDeliveryArea(id: string) {
   if (!storeId) throw new Error("Não autorizado");
 
   await prisma.deliveryArea.delete({
-    where: { id, storeId }, // Garantir que pertence à loja
+    where: { id, storeId },
+  });
+
+  revalidatePath("/dashboard/settings");
+  return { success: true };
+}
+
+export async function updateUberDirect(enabled: boolean) {
+  const session = await auth();
+  const storeId = (session?.user as any)?.storeId;
+  if (!storeId) throw new Error("Não autorizado");
+
+  await prisma.store.update({
+    where: { id: storeId },
+    data: { uberDirectEnabled: enabled },
+  });
+
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
+export async function updateStoreAddress(formData: FormData) {
+  const session = await auth();
+  const storeId = (session?.user as any)?.storeId;
+  if (!storeId) throw new Error("Não autorizado");
+
+  await prisma.store.update({
+    where: { id: storeId },
+    data: {
+      storeStreet: formData.get("storeStreet") as string,
+      storeNumber: formData.get("storeNumber") as string,
+      storeNeighborhood: formData.get("storeNeighborhood") as string || null,
+      storeCity: formData.get("storeCity") as string,
+      storeState: formData.get("storeState") as string,
+      storeCep: formData.get("storeCep") as string,
+    },
   });
 
   revalidatePath("/dashboard/settings");

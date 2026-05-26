@@ -18,6 +18,7 @@ export default function DashboardLayout({
     { name: 'Painel de Pedidos', href: '/dashboard' },
     { name: 'Cardápio', href: '/dashboard/menu' },
     { name: 'Complementos', href: '/dashboard/complements' },
+    { name: 'Clientes', href: '/dashboard/customers' },
     { name: 'Fluxo de Caixa', href: '/dashboard/cashier' },
     { name: 'Relatórios', href: '/dashboard/reports' },
     { name: 'Entregas', href: '/dashboard/delivery' },

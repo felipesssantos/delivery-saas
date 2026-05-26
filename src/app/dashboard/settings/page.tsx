@@ -20,6 +20,13 @@ export default async function SettingsPage() {
       currency: true,
       openStatus: true,
       welcomeMessage: true,
+      uberDirectEnabled: true,
+      storeStreet: true,
+      storeNumber: true,
+      storeNeighborhood: true,
+      storeCity: true,
+      storeState: true,
+      storeCep: true,
     },
   });
 

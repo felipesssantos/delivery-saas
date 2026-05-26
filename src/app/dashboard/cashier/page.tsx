@@ -13,12 +13,24 @@ export default async function CashierPage() {
     where: {
       storeId: session.user.storeId,
       status: "OPEN"
+    },
+    include: {
+      orders: {
+        include: { customer: { select: { name: true } } },
+        orderBy: { createdAt: "desc" }
+      }
     }
   });
 
   const history = await prisma.cashRegister.findMany({
     where: {
       storeId: session.user.storeId
+    },
+    include: {
+      orders: {
+        include: { customer: { select: { name: true } } },
+        orderBy: { createdAt: "desc" }
+      }
     },
     orderBy: {
       openedAt: "desc"
@@ -40,7 +52,8 @@ export default async function CashierPage() {
           id: activeCashier.id,
           status: activeCashier.status,
           openedAt: activeCashier.openedAt,
-          initialValue: activeCashier.initialValue
+          initialValue: activeCashier.initialValue,
+          orders: activeCashier.orders
         } : null}
         history={history}
       />

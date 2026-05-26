@@ -47,11 +47,17 @@ export default async function DashboardPage() {
     select: { id: true, name: true },
   });
 
+  const store = await prisma.store.findUnique({
+    where: { id: storeId },
+    select: { uberDirectEnabled: true },
+  });
+
   return (
     <KanbanClient 
       orders={orders} 
       couriers={couriers} 
-      isCashierOpen={!!activeCashier} 
+      isCashierOpen={!!activeCashier}
+      uberEnabled={store?.uberDirectEnabled || false}
     />
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import styles from "./settings.module.css";
-import { updateStoreSettings, toggleStoreStatus } from "./actions";
+import { updateStoreSettings, toggleStoreStatus, updateUberDirect, updateStoreAddress } from "./actions";
 
 type StoreData = {
   name: string;
@@ -11,11 +11,19 @@ type StoreData = {
   currency: string;
   openStatus: boolean;
   welcomeMessage: string | null;
+  uberDirectEnabled: boolean;
+  storeStreet: string | null;
+  storeNumber: string | null;
+  storeNeighborhood: string | null;
+  storeCity: string | null;
+  storeState: string | null;
+  storeCep: string | null;
 };
 
 export default function SettingsClient({ store }: { store: StoreData }) {
   const [isPending, startTransition] = useTransition();
   const [isOpen, setIsOpen] = useState(store.openStatus);
+  const [uberEnabled, setUberEnabled] = useState(store.uberDirectEnabled);
   const [message, setMessage] = useState("");
 
   const handleToggleStatus = async () => {
@@ -36,6 +44,32 @@ export default function SettingsClient({ store }: { store: StoreData }) {
         setTimeout(() => setMessage(""), 3000);
       } catch (err) {
         setMessage("Erro ao salvar.");
+      }
+    });
+  };
+
+  const handleToggleUber = async () => {
+    const newStatus = !uberEnabled;
+    setUberEnabled(newStatus);
+    startTransition(async () => {
+      try {
+        await updateUberDirect(newStatus);
+      } catch {
+        setUberEnabled(!newStatus); // revert
+      }
+    });
+  };
+
+  const handleSaveAddress = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    startTransition(async () => {
+      try {
+        await updateStoreAddress(formData);
+        setMessage("Endereço salvo com sucesso!");
+        setTimeout(() => setMessage(""), 3000);
+      } catch {
+        setMessage("Erro ao salvar endereço.");
       }
     });
   };
@@ -134,6 +168,69 @@ export default function SettingsClient({ store }: { store: StoreData }) {
           </button>
         </div>
       </form>
+
+      {/* Uber Direct Section */}
+      <div className="card" style={{ marginTop: "1.5rem" }}>
+        <h3 className={styles.cardTitle}>🚗 Uber Direct</h3>
+        <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginBottom: "1rem" }}>
+          Solicite entregadores da Uber diretamente pelo painel. Sem motoboy próprio necessário.
+        </p>
+
+        <div className={styles.switchContainer} onClick={handleToggleUber} style={{ cursor: 'pointer', marginBottom: '1rem' }}>
+          <div className={styles.switchText}>
+            <h3>Ativar Uber Direct</h3>
+            <p>Ao ativar, a opção "Uber Direct" aparecerá ao despachar pedidos.</p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{ fontWeight: 600, fontSize: '0.9rem', color: uberEnabled ? 'var(--success)' : 'var(--text-secondary)' }}>
+              {uberEnabled ? "Ativo" : "Inativo"}
+            </span>
+            <div className={`${styles.toggleSwitch} ${uberEnabled ? styles.active : ''}`}>
+              <div className={styles.toggleKnob} />
+            </div>
+          </div>
+        </div>
+
+        {uberEnabled && (
+          <form onSubmit={handleSaveAddress}>
+            <h4 style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "0.75rem" }}>📍 Endereço da Loja (Ponto de Coleta)</h4>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.8rem", marginBottom: "1rem" }}>
+              A Uber usa este endereço como ponto de partida para coletar os pedidos.
+            </p>
+            <div className={styles.formGrid}>
+              <div>
+                <label className="label">Rua</label>
+                <input name="storeStreet" defaultValue={store.storeStreet || ""} className="input-field" placeholder="Rua das Flores" required />
+              </div>
+              <div>
+                <label className="label">Número</label>
+                <input name="storeNumber" defaultValue={store.storeNumber || ""} className="input-field" placeholder="123" required />
+              </div>
+              <div>
+                <label className="label">Bairro</label>
+                <input name="storeNeighborhood" defaultValue={store.storeNeighborhood || ""} className="input-field" placeholder="Centro" />
+              </div>
+              <div>
+                <label className="label">Cidade</label>
+                <input name="storeCity" defaultValue={store.storeCity || ""} className="input-field" placeholder="Salvador" required />
+              </div>
+              <div>
+                <label className="label">Estado</label>
+                <input name="storeState" defaultValue={store.storeState || ""} className="input-field" placeholder="BA" maxLength={2} required />
+              </div>
+              <div>
+                <label className="label">CEP</label>
+                <input name="storeCep" defaultValue={store.storeCep || ""} className="input-field" placeholder="40000-000" required />
+              </div>
+            </div>
+            <div className={styles.footer}>
+              <button type="submit" className="btn-primary" disabled={isPending}>
+                {isPending ? "Salvando..." : "Salvar Endereço"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }

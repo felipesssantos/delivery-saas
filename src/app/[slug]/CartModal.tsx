@@ -22,7 +22,7 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
   // Form states
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  
+
   // Address states
   const [cep, setCep] = useState("");
   const [street, setStreet] = useState("");
@@ -35,6 +35,16 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
   const [cepError, setCepError] = useState("");
   const [isBlocked, setIsBlocked] = useState(false);
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
+  const [isQuoting, setIsQuoting] = useState(false);
+  const [quoteError, setQuoteError] = useState("");
+
+  const handleAddressFieldChange = (setter: React.Dispatch<React.SetStateAction<string>>) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setter(e.target.value);
+    if (store.uberDirectEnabled) {
+      setDeliveryFee(null);
+      setQuoteError("");
+    }
+  };
 
   const [paymentMethod, setPaymentMethod] = useState("PIX");
   const [changeFor, setChangeFor] = useState("");
@@ -45,7 +55,7 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
   const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.replace(/\D/g, "");
     if (value.length > 8) value = value.slice(0, 8);
-    
+
     let formatted = value;
     if (value.length > 5) {
       formatted = `${value.slice(0, 5)}-${value.slice(5)}`;
@@ -53,7 +63,12 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
     setCep(formatted);
     setCepError("");
     setIsBlocked(false);
-    setDeliveryFee(null);
+    if (store.uberDirectEnabled) {
+      setDeliveryFee(null);
+      setQuoteError("");
+    } else {
+      setDeliveryFee(null);
+    }
 
     if (value.length === 8) {
       setIsLoadingCep(true);
@@ -89,10 +104,12 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
               setCepError(`Infelizmente não realizamos entregas no bairro "${data.bairro}" em ${data.localidade}.`);
             } else {
               // All good! Apply fixed delivery fee
-              setDeliveryFee(deliveryConfig.baseDeliveryFee);
+              if (!store.uberDirectEnabled) {
+                setDeliveryFee(deliveryConfig.baseDeliveryFee);
+              }
             }
           }
-          
+
           document.getElementById("address-number")?.focus();
         }
       } catch (error) {
@@ -104,11 +121,42 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
     }
   };
 
+  const calculateUberQuote = async () => {
+    if (!street || !number || !city || !state || !cep) {
+      setQuoteError("Preencha todos os campos do endereço (incluindo número) para calcular o frete.");
+      return;
+    }
+
+    setIsQuoting(true);
+    setQuoteError("");
+    try {
+      const res = await fetch("/api/delivery/quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storeId: store.id,
+          dropoff: { street, number, city, state, cep }
+        })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setQuoteError(data.error || "Erro ao calcular frete. Verifique o endereço.");
+      } else {
+        setDeliveryFee(data.fee);
+      }
+    } catch (err) {
+      setQuoteError("Falha de conexão. Tente novamente.");
+    } finally {
+      setIsQuoting(false);
+    }
+  };
+
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isBlocked) return;
     setIsSubmitting(true);
-    
+
     try {
       await createOrder({
         storeId: store.id,
@@ -154,21 +202,21 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
 
   return (
     <div style={{
-      position: "fixed", top: 0, left: 0, right: 0, bottom: 0, 
+      position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
       backgroundColor: "rgba(0,0,0,0.6)", zIndex: 100,
       display: "flex", flexDirection: "column", justifyContent: "flex-end",
       backdropFilter: "blur(4px)"
     }}>
-      <div style={{ 
-        backgroundColor: "var(--surface)", 
-        width: "100%", 
-        height: "85vh", 
-        borderTopLeftRadius: "var(--radius-lg)", 
+      <div style={{
+        backgroundColor: "var(--surface)",
+        width: "100%",
+        height: "85vh",
+        borderTopLeftRadius: "var(--radius-lg)",
         borderTopRightRadius: "var(--radius-lg)",
         display: "flex", flexDirection: "column",
         animation: "slideUp 0.3s ease-out forwards"
       }}>
-        
+
         {/* HEADER */}
         <div style={{ padding: "1.5rem", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>
@@ -181,7 +229,7 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
 
         {/* CONTENT */}
         <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem" }}>
-          
+
           {step === "CART" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               {cart.length === 0 ? (
@@ -194,33 +242,34 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
                   {cart.map(item => {
                     const flatAddons = Object.values(item.selectedOptions || {}).flat();
                     return (
-                    <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
-                      <div style={{ flex: 1 }}>
-                        <h4 style={{ fontWeight: 600 }}>{item.product.name}</h4>
-                        {flatAddons.length > 0 && (
-                          <p style={{ color: "var(--text-secondary)", fontSize: "0.8rem", marginBottom: "0.2rem" }}>
-                            {flatAddons.map(a => a.name).join(", ")}
+                      <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+                        <div style={{ flex: 1 }}>
+                          <h4 style={{ fontWeight: 600 }}>{item.product.name}</h4>
+                          {flatAddons.length > 0 && (
+                            <p style={{ color: "var(--text-secondary)", fontSize: "0.8rem", marginBottom: "0.2rem" }}>
+                              {flatAddons.map(a => a.name).join(", ")}
+                            </p>
+                          )}
+                          <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.finalPrice)}
                           </p>
-                        )}
-                        <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>
-                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.finalPrice)}
-                        </p>
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: "1rem", backgroundColor: "var(--background)", borderRadius: "var(--radius-full)", padding: "0.25rem" }}>
+                          {item.quantity === 1 ? (
+                            <button
+                              onClick={() => { if (window.confirm("Deseja realmente remover este item da sacola?")) onRemove(item.id); }}
+                              style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--error-light)", color: "var(--error)", fontSize: "1rem", border: "none", cursor: "pointer" }}
+                            >🗑️</button>
+                          ) : (
+                            <button onClick={() => onUpdateQuantity(item.id, -1)} style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold", border: "none", cursor: "pointer" }}>-</button>
+                          )}
+                          <span style={{ fontWeight: 600, minWidth: "1rem", textAlign: "center" }}>{item.quantity}</span>
+                          <button onClick={() => onUpdateQuantity(item.id, 1)} style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold", color: "var(--primary)", border: "none", cursor: "pointer" }}>+</button>
+                        </div>
                       </div>
-                      
-                      <div style={{ display: "flex", alignItems: "center", gap: "1rem", backgroundColor: "var(--background)", borderRadius: "var(--radius-full)", padding: "0.25rem" }}>
-                        {item.quantity === 1 ? (
-                          <button 
-                            onClick={() => { if (window.confirm("Deseja realmente remover este item da sacola?")) onRemove(item.id); }} 
-                            style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--error-light)", color: "var(--error)", fontSize: "1rem", border: "none", cursor: "pointer" }}
-                          >🗑️</button>
-                        ) : (
-                          <button onClick={() => onUpdateQuantity(item.id, -1)} style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold", border: "none", cursor: "pointer" }}>-</button>
-                        )}
-                        <span style={{ fontWeight: 600, minWidth: "1rem", textAlign: "center" }}>{item.quantity}</span>
-                        <button onClick={() => onUpdateQuantity(item.id, 1)} style={{ width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold", color: "var(--primary)", border: "none", cursor: "pointer" }}>+</button>
-                      </div>
-                    </div>
-                  )})}
+                    )
+                  })}
 
                   <div style={{ marginTop: "1rem", paddingTop: "1.5rem", borderTop: "1px dashed var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: "1.1rem", color: "var(--text-secondary)" }}>Total</span>
@@ -257,15 +306,15 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
                     </div>
                   )}
                 </div>
-                
+
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", gridColumn: "1 / -1" }}>
                   <label className="label">Rua</label>
-                  <input type="text" className="input-field" required value={street} onChange={e => setStreet(e.target.value)} placeholder="Nome da rua" />
+                  <input type="text" className="input-field" required value={street} onChange={handleAddressFieldChange(setStreet)} placeholder="Nome da rua" />
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                   <label className="label">Número</label>
-                  <input id="address-number" type="text" className="input-field" required value={number} onChange={e => setNumber(e.target.value)} placeholder="Ex: 123" />
+                  <input id="address-number" type="text" className="input-field" required value={number} onChange={handleAddressFieldChange(setNumber)} placeholder="Ex: 123" />
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -275,19 +324,35 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", gridColumn: "1 / -1" }}>
                   <label className="label">Bairro</label>
-                  <input type="text" className="input-field" required value={neighborhood} onChange={e => setNeighborhood(e.target.value)} placeholder="Seu bairro" />
+                  <input type="text" className="input-field" required value={neighborhood} onChange={handleAddressFieldChange(setNeighborhood)} placeholder="Seu bairro" />
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                   <label className="label">Cidade</label>
-                  <input type="text" className="input-field" required value={city} onChange={e => setCity(e.target.value)} />
+                  <input type="text" className="input-field" required value={city} onChange={handleAddressFieldChange(setCity)} />
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                   <label className="label">Estado (UF)</label>
-                  <input type="text" className="input-field" required value={state} onChange={e => setState(e.target.value)} maxLength={2} />
+                  <input type="text" className="input-field" required value={state} onChange={handleAddressFieldChange(setState)} maxLength={2} />
                 </div>
               </div>
+
+              {/* UBER QUOTE BUTTON */}
+              {store.uberDirectEnabled && !isBlocked && deliveryFee === null && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
+                  <button
+                    type="button"
+                    onClick={calculateUberQuote}
+                    disabled={isQuoting || !cep || !street || !number}
+                    className="btn-primary"
+                    style={{ padding: "0.75rem", display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem", opacity: (isQuoting || !cep || !street || !number) ? 0.5 : 1 }}
+                  >
+                    {isQuoting ? "Calculando..." : "Calcular Valor da Entrega"}
+                  </button>
+                  {quoteError && <span style={{ color: "var(--error)", fontSize: "0.85rem", textAlign: "center" }}>⚠️ {quoteError}</span>}
+                </div>
+              )}
 
               {/* DELIVERY FEE SUMMARY */}
               {deliveryFee !== null && !isBlocked && (
@@ -308,6 +373,11 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
                       {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(grandTotal)}
                     </span>
                   </div>
+                  {store.uberDirectEnabled && (
+                    <div style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "var(--text-tertiary)", textAlign: "center", fontStyle: "italic" }}>
+                      * O valor da entrega pode sofrer alteração devido ao tempo da cotação e até que o pedido fique pronto.
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -326,7 +396,7 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
                   <option value="CASH">Dinheiro</option>
                 </select>
               </div>
-              
+
               {paymentMethod === "CASH" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                   <label className="label">Troco para quanto?</label>
@@ -353,27 +423,28 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
             {step === "CHECKOUT" && (
               <button onClick={() => setStep("CART")} className="btn-secondary" style={{ flex: 1 }} disabled={isSubmitting}>Voltar</button>
             )}
-            
+
             {step === "CART" ? (
               <button onClick={() => setStep("CHECKOUT")} className="btn-primary" style={{ flex: 1, padding: "1rem", opacity: cart.length === 0 ? 0.5 : 1 }} disabled={cart.length === 0}>
                 Continuar
               </button>
             ) : (
-              <button type="submit" form="checkout-form" className="btn-primary" style={{ flex: 2, padding: "1rem", opacity: isBlocked ? 0.5 : 1 }} disabled={isSubmitting || isBlocked}>
-                {isSubmitting ? "Enviando..." : isBlocked ? "Entrega indisponível" : "Confirmar Pedido"}
+              <button type="submit" form="checkout-form" className="btn-primary" style={{ flex: 2, padding: "1rem", opacity: (isBlocked || (store.uberDirectEnabled && deliveryFee === null)) ? 0.5 : 1 }} disabled={isSubmitting || isBlocked || (store.uberDirectEnabled && deliveryFee === null)}>
+                {isSubmitting ? "Enviando..." : isBlocked ? "Entrega indisponível" : (store.uberDirectEnabled && deliveryFee === null) ? "Calcule a entrega primeiro" : "Confirmar Pedido"}
               </button>
             )}
           </div>
         )}
-        
+
         {step === "SUCCESS" && (
           <div style={{ padding: "1.5rem" }}>
             <button onClick={onClose} className="btn-primary" style={{ width: "100%", padding: "1rem" }}>Fechar Catálogo</button>
           </div>
         )}
       </div>
-      
-      <style dangerouslySetInnerHTML={{__html: `
+
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @keyframes slideUp {
           from { transform: translateY(100%); }
           to { transform: translateY(0); }

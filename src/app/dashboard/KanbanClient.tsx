@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { updateOrderStatus, assignCourierAndDispatch, cancelOrder } from "./actions";
+import { updateOrderStatus, assignCourierAndDispatch, cancelOrder, getUberQuote, dispatchViaUberDirect } from "./actions";
 import { openCashier } from "./cashier/actions";
 
 type OrderItem = {
@@ -55,11 +55,13 @@ const PAYMENT_LABELS: Record<string, string> = {
 export default function KanbanClient({ 
   orders, 
   couriers, 
-  isCashierOpen 
+  isCashierOpen,
+  uberEnabled 
 }: { 
   orders: Order[]; 
   couriers: Courier[];
   isCashierOpen: boolean;
+  uberEnabled?: boolean;
 }) {
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [loadingOrderId, setLoadingOrderId] = useState<string | null>(null);
@@ -67,6 +69,12 @@ export default function KanbanClient({
   // Courier selection modal
   const [dispatchOrderId, setDispatchOrderId] = useState<string | null>(null);
   const [selectedCourierId, setSelectedCourierId] = useState("");
+
+  // Uber Direct state
+  const [dispatchMode, setDispatchMode] = useState<"courier" | "uber">("courier");
+  const [uberQuote, setUberQuote] = useState<{ fee: number; estimatedMinutes: number; quoteId: string } | null>(null);
+  const [uberLoading, setUberLoading] = useState(false);
+  const [uberError, setUberError] = useState<string | null>(null);
 
   const router = useRouter();
   const prevPendingCount = useRef(0);
@@ -122,10 +130,13 @@ export default function KanbanClient({
       }
     }
 
-    // If moving from READY to DISPATCHED, show courier selection
+    // If moving from READY to DISPATCHED, show dispatch modal
     if (currentStatus === "READY") {
       setDispatchOrderId(orderId);
       setSelectedCourierId("");
+      setDispatchMode("courier");
+      setUberQuote(null);
+      setUberError(null);
       return;
     }
 
@@ -147,6 +158,40 @@ export default function KanbanClient({
       setDispatchOrderId(null);
     } catch {
       alert("Erro ao despachar pedido.");
+    } finally {
+      setLoadingOrderId(null);
+    }
+  };
+
+  // Uber Direct: Get Quote
+  const handleUberQuote = async () => {
+    if (!dispatchOrderId) return;
+    setUberLoading(true);
+    setUberError(null);
+    setUberQuote(null);
+    try {
+      const quote = await getUberQuote(dispatchOrderId);
+      setUberQuote(quote);
+    } catch (err: any) {
+      setUberError(err.message || "Erro ao cotar entrega Uber.");
+    } finally {
+      setUberLoading(false);
+    }
+  };
+
+  // Uber Direct: Dispatch
+  const handleUberDispatch = async () => {
+    if (!dispatchOrderId || !uberQuote) return;
+    setLoadingOrderId(dispatchOrderId);
+    try {
+      const result = await dispatchViaUberDirect(dispatchOrderId, uberQuote.quoteId);
+      setDispatchOrderId(null);
+      setUberQuote(null);
+      if (result.trackingUrl) {
+        console.log("Uber tracking:", result.trackingUrl);
+      }
+    } catch (err: any) {
+      alert("Erro ao despachar via Uber: " + (err.message || "Tente novamente."));
     } finally {
       setLoadingOrderId(null);
     }
@@ -302,7 +347,7 @@ export default function KanbanClient({
         })}
       </div>
 
-      {/* COURIER SELECTION MODAL */}
+      {/* DISPATCH MODAL (Entregador Próprio + Uber Direct) */}
       {dispatchOrderId && (
         <div style={{
           position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
@@ -312,59 +357,148 @@ export default function KanbanClient({
         }}>
           <div style={{
             backgroundColor: "var(--surface)", borderRadius: "var(--radius-lg)",
-            padding: "2rem", width: "90%", maxWidth: "400px",
+            padding: "2rem", width: "90%", maxWidth: "440px",
             boxShadow: "0 20px 60px rgba(0,0,0,0.3)"
           }}>
-            <h3 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.5rem" }}>🏍️ Selecionar Entregador</h3>
-            <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginBottom: "1.5rem" }}>
-              Escolha o entregador para o pedido <strong>#{dispatchOrderId.slice(-6).toUpperCase()}</strong>. Ele receberá os detalhes por WhatsApp.
+            <h3 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.5rem" }}>📦 Despachar Pedido</h3>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginBottom: "1rem" }}>
+              Pedido <strong>#{dispatchOrderId.slice(-6).toUpperCase()}</strong> — Escolha como enviar:
             </p>
 
-            {couriers.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: "var(--radius-md)", color: "var(--text-secondary)", marginBottom: "1rem" }}>
-                Nenhum entregador cadastrado.<br/>Cadastre em &ldquo;Entregadores&rdquo; no menu.
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
-                {couriers.map(c => (
-                  <label key={c.id} style={{
-                    display: "flex", alignItems: "center", gap: "0.75rem",
-                    padding: "0.75rem 1rem", borderRadius: "var(--radius-md)",
-                    border: selectedCourierId === c.id ? `2px solid var(--primary)` : "1px solid var(--border)",
-                    backgroundColor: selectedCourierId === c.id ? "var(--primary-light)" : "var(--background)",
-                    cursor: "pointer", transition: "all 0.15s"
-                  }}>
-                    <input
-                      type="radio"
-                      name="courier"
-                      value={c.id}
-                      checked={selectedCourierId === c.id}
-                      onChange={() => setSelectedCourierId(c.id)}
-                      style={{ accentColor: "var(--primary)" }}
-                    />
-                    <span style={{ fontWeight: 500 }}>🏍️ {c.name}</span>
-                  </label>
-                ))}
-              </div>
+            {/* Mode tabs */}
+            <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem" }}>
+              <button
+                onClick={() => setDispatchMode("courier")}
+                style={{
+                  flex: 1, padding: "0.6rem", borderRadius: "var(--radius-md)",
+                  border: dispatchMode === "courier" ? "2px solid var(--primary)" : "1px solid var(--border)",
+                  backgroundColor: dispatchMode === "courier" ? "var(--primary-light)" : "var(--background)",
+                  fontWeight: 600, fontSize: "0.85rem", cursor: "pointer",
+                  color: dispatchMode === "courier" ? "var(--primary)" : "var(--text-secondary)"
+                }}
+              >
+                🏍️ Entregador Próprio
+              </button>
+              {uberEnabled && (
+                <button
+                  onClick={() => { setDispatchMode("uber"); if (!uberQuote && !uberLoading) handleUberQuote(); }}
+                  style={{
+                    flex: 1, padding: "0.6rem", borderRadius: "var(--radius-md)",
+                    border: dispatchMode === "uber" ? "2px solid #000" : "1px solid var(--border)",
+                    backgroundColor: dispatchMode === "uber" ? "#f5f5f5" : "var(--background)",
+                    fontWeight: 600, fontSize: "0.85rem", cursor: "pointer",
+                    color: dispatchMode === "uber" ? "#000" : "var(--text-secondary)"
+                  }}
+                >
+                  🚗 Uber Direct
+                </button>
+              )}
+            </div>
+
+            {/* Courier mode */}
+            {dispatchMode === "courier" && (
+              <>
+                {couriers.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: "var(--radius-md)", color: "var(--text-secondary)", marginBottom: "1rem" }}>
+                    Nenhum entregador cadastrado.<br/>Cadastre em &ldquo;Entregadores&rdquo; no menu.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "1.5rem" }}>
+                    {couriers.map(c => (
+                      <label key={c.id} style={{
+                        display: "flex", alignItems: "center", gap: "0.75rem",
+                        padding: "0.75rem 1rem", borderRadius: "var(--radius-md)",
+                        border: selectedCourierId === c.id ? "2px solid var(--primary)" : "1px solid var(--border)",
+                        backgroundColor: selectedCourierId === c.id ? "var(--primary-light)" : "var(--background)",
+                        cursor: "pointer", transition: "all 0.15s"
+                      }}>
+                        <input
+                          type="radio"
+                          name="courier"
+                          value={c.id}
+                          checked={selectedCourierId === c.id}
+                          onChange={() => setSelectedCourierId(c.id)}
+                          style={{ accentColor: "var(--primary)" }}
+                        />
+                        <span style={{ fontWeight: 500 }}>🏍️ {c.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "0.75rem" }}>
+                  <button onClick={() => setDispatchOrderId(null)} className="btn-secondary" style={{ flex: 1, padding: "0.75rem" }}>Cancelar</button>
+                  <button
+                    onClick={handleDispatch}
+                    disabled={!selectedCourierId || loadingOrderId === dispatchOrderId}
+                    className="btn-primary"
+                    style={{ flex: 1, padding: "0.75rem", opacity: !selectedCourierId ? 0.5 : 1 }}
+                  >
+                    {loadingOrderId === dispatchOrderId ? "Despachando..." : "Despachar"}
+                  </button>
+                </div>
+              </>
             )}
 
-            <div style={{ display: "flex", gap: "0.75rem" }}>
-              <button
-                onClick={() => setDispatchOrderId(null)}
-                className="btn-secondary"
-                style={{ flex: 1, padding: "0.75rem" }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleDispatch}
-                disabled={!selectedCourierId || loadingOrderId === dispatchOrderId}
-                className="btn-primary"
-                style={{ flex: 1, padding: "0.75rem", opacity: !selectedCourierId ? 0.5 : 1 }}
-              >
-                {loadingOrderId === dispatchOrderId ? "Despachando..." : "Despachar"}
-              </button>
-            </div>
+            {/* Uber mode */}
+            {dispatchMode === "uber" && (
+              <>
+                {uberLoading && (
+                  <div style={{ textAlign: "center", padding: "2rem", color: "var(--text-secondary)" }}>
+                    <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>🔄</div>
+                    Cotando entrega com a Uber...
+                  </div>
+                )}
+
+                {uberError && (
+                  <div style={{ padding: "1rem", backgroundColor: "var(--error-bg)", color: "var(--error)", borderRadius: "var(--radius-md)", marginBottom: "1rem", fontSize: "0.85rem" }}>
+                    ❌ {uberError}
+                  </div>
+                )}
+
+                {uberQuote && (
+                  <div style={{ marginBottom: "1.5rem" }}>
+                    <div style={{
+                      padding: "1.25rem", borderRadius: "var(--radius-md)",
+                      backgroundColor: "var(--background)", border: "1px solid var(--border)",
+                      display: "flex", flexDirection: "column", gap: "0.75rem"
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: "0.9rem", color: "var(--text-secondary)" }}>💰 Taxa de entrega</span>
+                        <span style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--primary)" }}>
+                          R$ {uberQuote.fee.toFixed(2).replace(".", ",")}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: "0.9rem", color: "var(--text-secondary)" }}>⏱️ Tempo estimado</span>
+                        <span style={{ fontSize: "1rem", fontWeight: 600 }}>
+                          {uberQuote.estimatedMinutes} min
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "0.75rem" }}>
+                  <button onClick={() => setDispatchOrderId(null)} className="btn-secondary" style={{ flex: 1, padding: "0.75rem" }}>Cancelar</button>
+                  {!uberQuote && !uberLoading && (
+                    <button onClick={handleUberQuote} className="btn-primary" style={{ flex: 1, padding: "0.75rem", backgroundColor: "#000", color: "#fff" }}>
+                      Cotar Entrega
+                    </button>
+                  )}
+                  {uberQuote && (
+                    <button
+                      onClick={handleUberDispatch}
+                      disabled={loadingOrderId === dispatchOrderId}
+                      className="btn-primary"
+                      style={{ flex: 1, padding: "0.75rem", backgroundColor: "#000", color: "#fff" }}
+                    >
+                      {loadingOrderId === dispatchOrderId ? "Solicitando..." : "🚗 Solicitar Uber"}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
