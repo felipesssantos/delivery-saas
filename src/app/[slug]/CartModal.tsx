@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CartItem, DeliveryConfig } from "./StoreClient";
 import { createOrder } from "./actions";
 
@@ -37,6 +37,28 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
   const [isQuoting, setIsQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState("");
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+
+  // Load from localStorage when component mounts
+  useEffect(() => {
+    const savedProfile = localStorage.getItem(`customer_profile_${store.id}`);
+    if (savedProfile) {
+      try {
+        const parsed = JSON.parse(savedProfile);
+        if (parsed.name) setCustomerName(parsed.name);
+        if (parsed.phone) setCustomerPhone(parsed.phone);
+        if (parsed.cep) setCep(parsed.cep);
+        if (parsed.street) setStreet(parsed.street);
+        if (parsed.number) setNumber(parsed.number);
+        if (parsed.complement) setComplement(parsed.complement);
+        if (parsed.neighborhood) setNeighborhood(parsed.neighborhood);
+        if (parsed.city) setCity(parsed.city);
+        if (parsed.state) setState(parsed.state);
+      } catch (e) {
+        console.error("Failed to parse saved profile", e);
+      }
+    }
+  }, [store.id]);
 
   const handleAddressFieldChange = (setter: React.Dispatch<React.SetStateAction<string>>) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setter(e.target.value);
@@ -83,37 +105,10 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
           setCity(data.localidade || "");
           setState(data.uf || "");
 
-          const cidadeViaCep = (data.localidade || "").toLowerCase();
-          const bairroViaCep = (data.bairro || "").toLowerCase();
-
-          // STEP 1: Check if the city is served
-          const cityConfig = deliveryConfig.cities.find(c => c.name === cidadeViaCep);
-
-          if (!cityConfig) {
-            // City not in the list of served cities
-            setIsBlocked(true);
-            if (deliveryConfig.cities.length === 0) {
-              setCepError("A loja ainda não configurou as cidades de entrega. Entre em contato pelo WhatsApp.");
-            } else {
-              setCepError(`Infelizmente não realizamos entregas na cidade de "${data.localidade}".`);
-            }
-          } else {
-            // STEP 2: Check if the neighborhood is blacklisted within that city
-            if (cityConfig.blacklistedNeighborhoods.includes(bairroViaCep)) {
-              setIsBlocked(true);
-              setCepError(`Infelizmente não realizamos entregas no bairro "${data.bairro}" em ${data.localidade}.`);
-            } else {
-              // All good! Apply fixed delivery fee
-              if (!store.uberDirectEnabled) {
-                setDeliveryFee(deliveryConfig.baseDeliveryFee);
-              }
-            }
-          }
-
-          document.getElementById("address-number")?.focus();
+          validateCity(data.localidade, data.bairro);
         }
-      } catch (error) {
-        console.error("Erro ao buscar CEP", error);
+      } catch (err) {
+        console.error("Erro ao buscar CEP", err);
         setCepError("Erro ao buscar CEP. Tente novamente.");
       } finally {
         setIsLoadingCep(false);
@@ -197,6 +192,71 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
       alert("Erro ao enviar o pedido. Tente novamente.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handlePhoneBlur = async () => {
+    const cleanPhone = customerPhone.replace(/\D/g, "");
+    if (cleanPhone.length < 10) return;
+
+    // Se já temos os dados (carregados via localStorage ou digitados), podemos pular a busca,
+    // a menos que estejamos tentando auto-completar especificamente para um número novo.
+    // Para melhorar, buscamos sempre que o telefone mudar se o CEP estiver vazio.
+    if (cep && street) return;
+
+    setIsLoadingProfile(true);
+    try {
+      const res = await fetch(`/api/customer/profile?phone=${cleanPhone}&storeId=${store.id}`);
+      const data = await res.json();
+
+      if (data.found) {
+        if (!customerName) setCustomerName(data.name);
+
+        if (data.address && !cep) {
+          setCep(data.address.cep);
+          setStreet(data.address.street);
+          setNumber(data.address.number);
+          setComplement(data.address.complement || "");
+          setNeighborhood(data.address.neighborhood);
+          setCity(data.address.city);
+          setState(data.address.state);
+
+          // Revalida a área de entrega automaticamente
+          validateCity(data.address.city, data.address.neighborhood);
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao buscar dados do cliente", error);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  };
+
+  // Helper para validar cidade
+  const validateCity = (cidade: string, bairro: string) => {
+    const cidadeLower = (cidade || "").toLowerCase();
+    const bairroLower = (bairro || "").toLowerCase();
+    const cityConfig = deliveryConfig.cities.find(c => c.name === cidadeLower);
+
+    if (!cityConfig) {
+      setIsBlocked(true);
+      setCepError(`Infelizmente não realizamos entregas na cidade de "${cidade}".`);
+      return false;
+    } else {
+      const isBlacklisted = cityConfig.blacklistedNeighborhoods.some(b => b === bairroLower);
+      if (isBlacklisted) {
+        setIsBlocked(true);
+        setCepError(`Infelizmente não realizamos entregas no bairro "${bairro}".`);
+        return false;
+      }
+      setIsBlocked(false);
+      setCepError("");
+      
+      // Define a taxa de entrega base (caso não use Uber Direct)
+      if (!store.uberDirectEnabled) {
+        setDeliveryFee(deliveryConfig.baseDeliveryFee);
+      }
+      return true;
     }
   };
 
@@ -286,12 +346,28 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
             <form id="checkout-form" onSubmit={handleCheckout} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
               <h3 style={{ fontSize: "1.1rem", fontWeight: 600 }}>Seus Dados</h3>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                <label className="label">Nome Completo</label>
-                <input type="text" className="input-field" required value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Ex: João da Silva" />
+                <label className="label">WhatsApp</label>
+                <div style={{ position: "relative" }}>
+                  <input 
+                    type="tel" 
+                    className="input-field" 
+                    required 
+                    value={customerPhone} 
+                    onChange={e => setCustomerPhone(e.target.value)} 
+                    onBlur={handlePhoneBlur}
+                    placeholder="(11) 99999-9999" 
+                    style={{ width: "100%" }}
+                  />
+                  {isLoadingProfile && (
+                    <span style={{ position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", fontSize: "0.8rem", color: "var(--primary)" }}>
+                      Buscando...
+                    </span>
+                  )}
+                </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                <label className="label">WhatsApp</label>
-                <input type="tel" className="input-field" required value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="(11) 99999-9999" />
+                <label className="label">Nome Completo</label>
+                <input type="text" className="input-field" required value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Ex: João da Silva" />
               </div>
 
               <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginTop: "1rem" }}>Entrega</h3>

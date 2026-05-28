@@ -371,7 +371,10 @@ export default function StoreClient({ store, categories, deliveryConfig }: { sto
                 {!isCollapsed && (
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "0.75rem" }}>
                     {category.products.map(product => {
-                      const cartItem = cart.find(item => item.product.id === product.id);
+                      const cartItemsOfProduct = cart.filter(item => item.product.id === product.id);
+                      const totalQty = cartItemsOfProduct.reduce((sum, item) => sum + item.quantity, 0);
+                      const hasAddons = product.addons && product.addons.length > 0;
+
                       return (
                         <div key={product.id} style={{
                           display: "flex", gap: "1rem", padding: "0.85rem", alignItems: "center",
@@ -400,37 +403,50 @@ export default function StoreClient({ store, categories, deliveryConfig }: { sto
                           )}
 
                           {/* Add/Quantity Controls */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            {cartItem ? (
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0, position: "relative" }}>
+                            {(!hasAddons && cartItemsOfProduct.length > 0) ? (
                               <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", backgroundColor: "var(--background)", borderRadius: "2rem", padding: "0.2rem 0.4rem", border: "1px solid var(--border)" }}>
                                 <button
-                                  onClick={() => handleUpdateQuantity(cartItem.id, -1)}
-                                  style={{ width: "26px", height: "26px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold", fontSize: "1.1rem", color: "var(--text-secondary)" }}
+                                  onClick={() => handleUpdateQuantity(cartItemsOfProduct[0].id, -1)}
+                                  style={{ width: "26px", height: "26px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold", fontSize: "1.1rem", color: "var(--text-secondary)", border: "none", cursor: "pointer" }}
                                 >-</button>
-                                <span style={{ fontWeight: 600, minWidth: "1rem", textAlign: "center", fontSize: "0.9rem" }}>{cartItem.quantity}</span>
+                                <span style={{ fontWeight: 600, minWidth: "1rem", textAlign: "center", fontSize: "0.9rem" }}>{cartItemsOfProduct[0].quantity}</span>
                                 <button
-                                  onClick={() => handleUpdateQuantity(cartItem.id, 1)}
-                                  style={{ width: "26px", height: "26px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold", fontSize: "1.1rem", color: "var(--primary)" }}
+                                  onClick={() => handleUpdateQuantity(cartItemsOfProduct[0].id, 1)}
+                                  style={{ width: "26px", height: "26px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", backgroundColor: "var(--surface)", fontWeight: "bold", fontSize: "1.1rem", color: "var(--primary)", border: "none", cursor: "pointer" }}
                                 >+</button>
                               </div>
                             ) : (
-                              <button
-                                onClick={() => {
-                                  if (!store.openStatus) return alert("A loja está fechada no momento.");
-                                  if (product.addons && product.addons.length > 0) {
-                                    setSelectedProduct(product);
-                                  } else {
-                                    handleAddToCart(product, {}, product.price, 1);
-                                  }
-                                }}
-                                style={{
-                                  padding: "0.5rem", borderRadius: "50%", width: "36px", height: "36px",
-                                  display: "flex", alignItems: "center", justifyContent: "center",
-                                  backgroundColor: "var(--primary)", color: "white", border: "none",
-                                  fontSize: "1.2rem", cursor: "pointer", opacity: store.openStatus ? 1 : 0.5,
-                                  boxShadow: "0 2px 8px rgba(240,90,40,0.3)", transition: "transform 0.15s"
-                                }}
-                              >+</button>
+                              <>
+                                <button
+                                  onClick={() => {
+                                    if (!store.openStatus) return alert("A loja está fechada no momento.");
+                                    if (hasAddons) {
+                                      setSelectedProduct(product);
+                                    } else {
+                                      handleAddToCart(product, {}, product.price, 1);
+                                    }
+                                  }}
+                                  style={{
+                                    padding: "0.5rem", borderRadius: "50%", width: "36px", height: "36px",
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    backgroundColor: "var(--primary)", color: "white", border: "none",
+                                    fontSize: "1.2rem", cursor: "pointer", opacity: store.openStatus ? 1 : 0.5,
+                                    boxShadow: "0 2px 8px rgba(240,90,40,0.3)", transition: "transform 0.15s"
+                                  }}
+                                >+</button>
+                                {totalQty > 0 && hasAddons && (
+                                  <span style={{
+                                    position: "absolute", top: "-5px", right: "-5px",
+                                    backgroundColor: "var(--text-primary)", color: "var(--surface)",
+                                    fontSize: "0.7rem", fontWeight: "bold", width: "18px", height: "18px",
+                                    borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                                    pointerEvents: "none"
+                                  }}>
+                                    {totalQty}
+                                  </span>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>

@@ -70,5 +70,7 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
       }
       return session;
     }
-  }
+  },
+  useSecureCookies: false, // Força a usar cookies normais (mesmo no HTTPS do Ngrok)
+  trustHost: true // Necessário para funcionar com Ngrok e domínios dinâmicos
 })

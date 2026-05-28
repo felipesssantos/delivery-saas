@@ -56,7 +56,9 @@ export default function CustomersClient({ initialCustomers }: { initialCustomers
                 <td style={{ padding: "0.75rem", fontSize: "0.875rem", fontWeight: 500 }}>{c.name}</td>
                 <td style={{ padding: "0.75rem", fontSize: "0.875rem" }}>{c.phone}</td>
                 <td style={{ padding: "0.75rem", fontSize: "0.875rem" }}>{c.lastAddress}</td>
-                <td style={{ padding: "0.75rem", fontSize: "0.875rem" }}>{c.lastOrderDate ? new Date(c.lastOrderDate).toLocaleDateString() : "-"}</td>
+                <td style={{ padding: "0.75rem", fontSize: "0.875rem", fontVariantNumeric: "tabular-nums" }} suppressHydrationWarning>
+                  {c.lastOrderDate ? new Date(c.lastOrderDate).toLocaleDateString("pt-BR") : "-"}
+                </td>
                 <td style={{ padding: "0.75rem", fontSize: "0.875rem" }}>
                   <span style={{ backgroundColor: "var(--primary-light)", color: "var(--primary)", padding: "0.1rem 0.5rem", borderRadius: "1rem", fontWeight: 600 }}>
                     {c.totalOrders}

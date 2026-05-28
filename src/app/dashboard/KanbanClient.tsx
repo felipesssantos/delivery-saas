@@ -66,6 +66,11 @@ export default function KanbanClient({
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [loadingOrderId, setLoadingOrderId] = useState<string | null>(null);
   
+  // Mobile Tab State
+  const [activeTab, setActiveTab] = useState<string>("PENDING");
+  // Print State
+  const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
+
   // Courier selection modal
   const [dispatchOrderId, setDispatchOrderId] = useState<string | null>(null);
   const [selectedCourierId, setSelectedCourierId] = useState("");
@@ -143,12 +148,27 @@ export default function KanbanClient({
     setLoadingOrderId(orderId);
     try {
       await updateOrderStatus(orderId, nextStatus);
+      if (nextStatus === "ACCEPTED") {
+        const acceptedOrder = orders.find(o => o.id === orderId);
+        if (acceptedOrder) {
+          setOrderToPrint(acceptedOrder);
+        }
+      }
     } catch {
       alert("Erro ao atualizar status.");
     } finally {
       setLoadingOrderId(null);
     }
   };
+
+  useEffect(() => {
+    if (orderToPrint) {
+      setTimeout(() => {
+        window.print();
+        setOrderToPrint(null);
+      }, 500);
+    }
+  }, [orderToPrint]);
 
   const handleDispatch = async () => {
     if (!dispatchOrderId || !selectedCourierId) return;
@@ -223,25 +243,153 @@ export default function KanbanClient({
   const canceledOrders = orders.filter(o => o.status === "CANCELED");
 
   return (
-    <div>
-      <div style={{ marginBottom: "1.5rem" }}>
-        <h2 style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--text-primary)" }}>Painel de Pedidos</h2>
-        <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>
-          Gerencie os pedidos recebidos. Avance cada pedido pelas etapas.
-        </p>
-      </div>
+    <div className="kanban-container">
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #print-receipt, #print-receipt * {
+            visibility: visible;
+          }
+          #print-receipt {
+            position: absolute;
+            left: 8mm; /* Aumentado para 8mm para parar de cortar a esquerda */
+            top: 2mm; /* Adicionado margem superior para evitar corte no topo */
+            width: 46mm; /* Ajustado para compensar a margem maior */
+            padding: 0;
+            margin: 0;
+            font-family: monospace;
+            font-size: 13px; /* Aumentado a fonte para melhor legibilidade */
+            color: #000;
+          }
+          @page {
+            margin: 0;
+          }
+        }
+        .kanban-board {
+          display: flex;
+          gap: 1rem;
+          overflow-x: auto;
+          padding-bottom: 1rem;
+          min-height: 60vh;
+        }
+        .mobile-tabs {
+          display: none;
+        }
+        @media (max-width: 767px) {
+          .kanban-col {
+            display: none !important;
+          }
+          .kanban-col.active {
+            display: flex !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+          }
+          .mobile-tabs {
+            display: block;
+            margin-bottom: 1rem;
+          }
+        }
+      `}} />
+      
+      {orderToPrint && (
+        <div id="print-receipt">
+          <div style={{ textAlign: "center", marginBottom: "10px" }}>
+            <strong>PEDIDO #{orderToPrint.id.slice(-6).toUpperCase()}</strong><br/>
+            {formatDate(orderToPrint.createdAt)} {formatTime(orderToPrint.createdAt)}
+          </div>
+          <div style={{ borderBottom: "1px dashed #000", marginBottom: "10px" }}></div>
+          <div><strong>Cliente:</strong> {orderToPrint.customer.name}</div>
+          <div><strong>Telefone:</strong> {orderToPrint.customer.phone}</div>
+          <div style={{ borderBottom: "1px dashed #000", margin: "10px 0" }}></div>
+          <div><strong>Itens:</strong></div>
+          {orderToPrint.items.map(item => (
+            <div key={item.id} style={{ marginBottom: "5px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>{item.quantity}x {item.product.name}</span>
+                <span>R$ {(item.price * item.quantity).toFixed(2).replace(".", ",")}</span>
+              </div>
+              {item.addons && item.addons.length > 0 && (
+                <div style={{ paddingLeft: "10px", fontSize: "11px", fontStyle: "italic", color: "#333" }}>
+                  L {item.addons.map(a => a.addonOption.name).join(', ')}
+                </div>
+              )}
+            </div>
+          ))}
+          <div style={{ borderBottom: "1px dashed #000", margin: "10px 0" }}></div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span>Subtotal:</span>
+            <span>R$ {(orderToPrint.totalAmount - orderToPrint.deliveryFee).toFixed(2).replace(".", ",")}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span>Taxa de Entrega:</span>
+            <span>R$ {orderToPrint.deliveryFee.toFixed(2).replace(".", ",")}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", marginTop: "5px" }}>
+            <span>Total:</span>
+            <span>R$ {orderToPrint.totalAmount.toFixed(2).replace(".", ",")}</span>
+          </div>
+          <div style={{ borderBottom: "1px dashed #000", margin: "10px 0" }}></div>
+          <div><strong>Pagamento:</strong> {PAYMENT_LABELS[orderToPrint.paymentMethod] || orderToPrint.paymentMethod}</div>
+          {orderToPrint.paymentMethod === "CASH" && orderToPrint.changeFor && (
+            <div><strong>Troco para:</strong> R$ {orderToPrint.changeFor.toFixed(2).replace(".", ",")}</div>
+          )}
+          <div style={{ borderBottom: "1px dashed #000", margin: "10px 0" }}></div>
+          <div><strong>Endereço de Entrega:</strong></div>
+          <div>{orderToPrint.street}, {orderToPrint.number}{orderToPrint.complement && ` - ${orderToPrint.complement}`}</div>
+          <div>{orderToPrint.neighborhood}, {orderToPrint.city}/{orderToPrint.state}</div>
+          {orderToPrint.observation && (
+            <>
+              <div style={{ borderBottom: "1px dashed #000", margin: "10px 0" }}></div>
+              <div><strong>Obs:</strong> {orderToPrint.observation}</div>
+            </>
+          )}
+          <div style={{ textAlign: "center", marginTop: "15px", fontSize: "10px" }}>
+            Obrigado pela preferência!
+          </div>
+        </div>
+      )}
 
-      {/* PAINEL DE PEDIDOS */}
-      <div style={{ display: "flex", gap: "1rem", overflowX: "auto", paddingBottom: "1rem", minHeight: "60vh" }}>
-        {COLUMNS.map(col => {
-          const columnOrders = orders.filter(o => o.status === col.status);
-          return (
-            <div key={col.status} style={{ 
-              minWidth: "280px", maxWidth: "320px", flex: "1 0 280px",
-              display: "flex", flexDirection: "column",
-              backgroundColor: "var(--background)", borderRadius: "var(--radius-lg)", 
-              border: "1px solid var(--border)", overflow: "hidden"
-            }}>
+      <div className="no-print">
+        <div style={{ marginBottom: "1.5rem" }}>
+          <h2 style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--text-primary)" }}>Painel de Pedidos</h2>
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem" }}>
+            Gerencie os pedidos recebidos. Avance cada pedido pelas etapas.
+          </p>
+        </div>
+
+        <div className="mobile-tabs">
+          <label style={{ fontWeight: 600, fontSize: "0.9rem", marginRight: "0.5rem" }}>Fase do Pedido:</label>
+          <select 
+            value={activeTab} 
+            onChange={(e) => setActiveTab(e.target.value)}
+            style={{ 
+              padding: "0.5rem", borderRadius: "var(--radius-md)", 
+              border: "1px solid var(--border)", backgroundColor: "var(--surface)", 
+              fontSize: "1rem", width: "100%", marginTop: "0.5rem",
+              color: "var(--text-primary)"
+            }}
+          >
+            {COLUMNS.map(col => (
+              <option key={col.status} value={col.status}>
+                {col.label} ({orders.filter(o => o.status === col.status).length})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* PAINEL DE PEDIDOS */}
+        <div className="kanban-board">
+          {COLUMNS.map(col => {
+            const columnOrders = orders.filter(o => o.status === col.status);
+            return (
+              <div key={col.status} className={`kanban-col ${activeTab === col.status ? 'active' : ''}`} style={{ 
+                minWidth: "280px", maxWidth: "320px", flex: "1 0 280px",
+                display: "flex", flexDirection: "column",
+                backgroundColor: "var(--background)", borderRadius: "var(--radius-lg)", 
+                border: "1px solid var(--border)", overflow: "hidden"
+              }}>
               {/* Column Header */}
               <div style={{ padding: "1rem", borderBottom: `2px solid ${col.color}`, display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "var(--surface)" }}>
                 <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{col.label}</span>
@@ -533,6 +681,8 @@ export default function KanbanClient({
           </div>
         </div>
       )}
+      
+      </div>
     </div>
   );
 }

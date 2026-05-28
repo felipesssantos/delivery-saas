@@ -82,9 +82,98 @@
   backdrop-filter: blur(10px);
 }
 
+.pageTitle {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
 .pageContent {
   padding: 2rem;
   flex: 1;
+}
+
+/* --- Mobile Responsiveness --- */
+.menuButton {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-primary);
+  padding: 0.5rem;
+  margin-right: 0.5rem;
+}
+
+.overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 20;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.overlayOpen {
+  display: block;
+  opacity: 1;
+}
+
+.closeButton {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+  .menuButton {
+    display: block;
+  }
+  
+  .closeButton {
+    display: block;
+  }
+
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    z-index: 30; /* Above overlay */
+    width: 280px; /* Slightly wider on mobile for comfort */
+    box-shadow: 4px 0 10px rgba(0, 0, 0, 0.1);
+  }
+
+  .sidebarOpen {
+    transform: translateX(0);
+  }
+  
+  .sidebarHeader {
+    justify-content: space-between;
+  }
+
+  .mainContent {
+    margin-left: 0;
+  }
+
+  .header {
+    padding: 0 1rem;
+  }
+  
+  .pageTitle {
+    display: none; /* Esconder o título principal no mobile para dar espaço aos toggles */
+  }
+
+  .pageContent {
+    padding: 1rem;
+  }
+  
+  /* Hide the text of the status toggles on very small screens if needed, 
+     or just let them flow. They are flex row. */
 }
 
 /* Base Card for Dashboard */
