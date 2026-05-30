@@ -6,13 +6,14 @@ type OrderInput = {
   storeId: string;
   customerName: string;
   customerPhone: string;
-  cep: string;
-  street: string;
-  number: string;
-  complement: string;
-  neighborhood: string;
-  city: string;
-  state: string;
+  deliveryMethod?: "DELIVERY" | "PICKUP";
+  cep?: string | null;
+  street?: string | null;
+  number?: string | null;
+  complement?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
   paymentMethod: string;
   changeFor: string | null;
   observation: string;
@@ -28,6 +29,18 @@ type OrderInput = {
 };
 
 export async function createOrder(input: OrderInput) {
+  // 0. Double check if store allows pickup before proceeding
+  if (input.deliveryMethod === "PICKUP") {
+    const storeCheck = await prisma.store.findUnique({
+      where: { id: input.storeId },
+      select: { acceptsPickup: true }
+    });
+    
+    if (!storeCheck?.acceptsPickup) {
+      throw new Error("Esta loja não está mais aceitando retiradas no local no momento. Por favor, atualize a página.");
+    }
+  }
+
   // 1. Upsert the customer (find or create by phone + storeId)
   const cleanPhone = input.customerPhone.replace(/\D/g, "");
   
@@ -58,6 +71,8 @@ export async function createOrder(input: OrderInput) {
     select: { id: true }
   });
 
+  const isPickup = input.deliveryMethod === "PICKUP";
+
   // 4. Create the order with items
   const order = await prisma.order.create({
     data: {
@@ -66,13 +81,14 @@ export async function createOrder(input: OrderInput) {
       cashRegisterId: activeCashier?.id || null,
       totalAmount,
       deliveryFee: input.deliveryFee,
-      cep: input.cep,
-      street: input.street,
-      number: input.number,
-      neighborhood: input.neighborhood,
-      complement: input.complement || null,
-      city: input.city,
-      state: input.state,
+      deliveryMethod: input.deliveryMethod || "DELIVERY",
+      cep: isPickup ? null : input.cep,
+      street: isPickup ? null : input.street,
+      number: isPickup ? null : input.number,
+      neighborhood: isPickup ? null : input.neighborhood,
+      complement: isPickup ? null : input.complement,
+      city: isPickup ? null : input.city,
+      state: isPickup ? null : input.state,
       paymentMethod: input.paymentMethod,
       changeFor: input.paymentMethod === "CASH" && input.changeFor 
         ? parseFloat(input.changeFor.replace(",", ".")) 
@@ -132,11 +148,17 @@ export async function createOrder(input: OrderInput) {
     message += `📱 *WhatsApp:* ${input.customerPhone}\n\n`;
     message += `📦 *Itens:*\n${itemsText}\n\n`;
     message += `💰 Subtotal: R$ ${input.subtotal.toFixed(2).replace(".", ",")}\n`;
-    message += `🚚 Entrega: R$ ${input.deliveryFee.toFixed(2).replace(".", ",")}\n`;
+    message += `🚚 Entrega: ${isPickup ? "Retirada (Grátis)" : "R$ " + input.deliveryFee.toFixed(2).replace(".", ",")}\n`;
     message += `✅ *TOTAL: R$ ${totalAmount.toFixed(2).replace(".", ",")}*\n\n`;
-    message += `📍 *Endereço:*\n${input.street}, ${input.number}`;
-    if (input.complement) message += ` - ${input.complement}`;
-    message += `\n${input.neighborhood}, ${input.city}/${input.state}\nCEP: ${input.cep}\n\n`;
+    
+    if (isPickup) {
+      message += `📍 *Retirada na Loja*\n\n`;
+    } else {
+      message += `📍 *Endereço:*\n${input.street}, ${input.number}`;
+      if (input.complement) message += ` - ${input.complement}`;
+      message += `\n${input.neighborhood}, ${input.city}/${input.state}\nCEP: ${input.cep}\n\n`;
+    }
+
     message += `💳 *Pagamento:* ${paymentLabels[input.paymentMethod] || input.paymentMethod}`;
     if (input.paymentMethod === "CASH" && input.changeFor) {
       message += ` (Troco para R$ ${input.changeFor})`;

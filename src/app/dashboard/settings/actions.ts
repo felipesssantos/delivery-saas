@@ -17,16 +17,19 @@ export async function updateStoreSettings(formData: FormData) {
   const description = formData.get("description") as string;
   const currency = formData.get("currency") as string;
   const welcomeMessage = formData.get("welcomeMessage") as string;
+  const acceptsPickupToggle = formData.get("acceptsPickupToggle") as string | null;
+
+  const updateData: any = {};
+  if (name !== null) updateData.name = name;
+  if (phone !== null) updateData.phone = phone;
+  if (description !== null) updateData.description = description;
+  if (currency !== null) updateData.currency = currency;
+  if (welcomeMessage !== null) updateData.welcomeMessage = welcomeMessage || null;
+  if (acceptsPickupToggle !== null) updateData.acceptsPickup = acceptsPickupToggle === "true";
 
   await prisma.store.update({
     where: { id: storeId },
-    data: {
-      name,
-      phone,
-      description,
-      currency,
-      welcomeMessage: welcomeMessage || null,
-    },
+    data: updateData,
   });
 
   revalidatePath("/dashboard/settings");

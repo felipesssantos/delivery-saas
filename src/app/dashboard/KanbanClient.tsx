@@ -446,13 +446,21 @@ export default function KanbanClient({
                           ))}
                         </div>
                         {order.deliveryFee > 0 && <div>🚚 Entrega: R$ {order.deliveryFee.toFixed(2).replace(".", ",")}</div>}
-                        <div>
-                          <strong>📍 Endereço:</strong>
-                          <div style={{ color: "var(--text-secondary)", marginLeft: "0.5rem", wordBreak: "break-word", overflowWrap: "anywhere" }}>
-                            {order.street}, {order.number}{order.complement && ` - ${order.complement}`}
-                            <br/>{order.neighborhood}, {order.city}/{order.state}
+                        
+                        {!order.cep ? (
+                          <div>
+                            <strong>📍 Retirada na Loja</strong>
                           </div>
-                        </div>
+                        ) : (
+                          <div>
+                            <strong>📍 Endereço:</strong>
+                            <div style={{ color: "var(--text-secondary)", marginLeft: "0.5rem", wordBreak: "break-word", overflowWrap: "anywhere" }}>
+                              {order.street}, {order.number}{order.complement && ` - ${order.complement}`}
+                              <br/>{order.neighborhood}, {order.city}/{order.state}
+                            </div>
+                          </div>
+                        )}
+                        
                         <div>💳 {PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod}
                           {order.paymentMethod === "CASH" && order.changeFor && ` (Troco: R$ ${order.changeFor.toFixed(2).replace(".", ",")})`}
                         </div>

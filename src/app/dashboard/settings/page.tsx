@@ -21,6 +21,7 @@ export default async function SettingsPage() {
       openStatus: true,
       welcomeMessage: true,
       uberDirectEnabled: true,
+      acceptsPickup: true,
       storeStreet: true,
       storeNumber: true,
       storeNeighborhood: true,

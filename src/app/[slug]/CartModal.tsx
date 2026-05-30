@@ -23,6 +23,9 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
 
+  // Delivery Method state
+  const [deliveryMethod, setDeliveryMethod] = useState<"DELIVERY" | "PICKUP">("DELIVERY");
+
   // Address states
   const [cep, setCep] = useState("");
   const [street, setStreet] = useState("");
@@ -38,6 +41,9 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
   const [isQuoting, setIsQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState("");
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+
+  const isPickup = deliveryConfig.acceptsPickup && deliveryMethod === "PICKUP";
+  const grandTotal = total + (isPickup ? 0 : (deliveryFee || 0));
 
   // Load from localStorage when component mounts
   useEffect(() => {
@@ -71,8 +77,6 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
   const [paymentMethod, setPaymentMethod] = useState("PIX");
   const [changeFor, setChangeFor] = useState("");
   const [observation, setObservation] = useState("");
-
-  const grandTotal = total + (deliveryFee || 0);
 
   const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.replace(/\D/g, "");
@@ -149,47 +153,70 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isBlocked) return;
-    setIsSubmitting(true);
 
+    // Bloqueia tentativas forçadas se a loja não aceitar retirada
+    if (deliveryMethod === "PICKUP" && !deliveryConfig.acceptsPickup) {
+      alert("Esta loja não aceita retiradas no local no momento.");
+      return;
+    }
+
+    if (!isPickup) {
+      if (isBlocked) {
+        alert("Não é possível entregar neste endereço.");
+        return;
+      }
+
+      if (store.uberDirectEnabled && deliveryFee === null) {
+        alert("Por favor, calcule a taxa de entrega da Uber antes de finalizar.");
+        return;
+      }
+    }
+
+    // Save profile to localStorage on successful checkout
+    setIsSubmitting(true);
     try {
+      // Formata os itens para bater com o esperado na action
+      const formattedItems = cart.map(item => {
+        const flatAddons = Object.values(item.selectedOptions || {}).flat();
+        return {
+          productId: item.product.id,
+          name: item.product.name,
+          quantity: item.quantity,
+          price: item.product.price, // O preço base do produto
+          addons: flatAddons.map(a => ({ id: a.id, name: a.name, price: a.price }))
+        };
+      });
+
       await createOrder({
         storeId: store.id,
         customerName,
-        customerPhone,
-        cep,
-        street,
-        number,
-        complement,
-        neighborhood,
-        city,
-        state,
+        customerPhone: customerPhone.replace(/\D/g, ""),
+        deliveryMethod: isPickup ? "PICKUP" : "DELIVERY", // Força DELIVERY caso a loja tenha desabilitado o PICKUP por trás
+        cep: isPickup ? null : cep,
+        street: isPickup ? null : street,
+        number: isPickup ? null : number,
+        complement: isPickup ? null : complement,
+        neighborhood: isPickup ? null : neighborhood,
+        city: isPickup ? null : city,
+        state: isPickup ? null : state,
         paymentMethod,
-        changeFor: paymentMethod === "CASH" ? changeFor : null,
+        changeFor: changeFor ? parseFloat(changeFor.replace(",", ".")) : null,
         observation,
-        deliveryFee: deliveryFee || 0,
-        items: cart.map(item => {
-          const flatAddons = Object.values(item.selectedOptions || {}).flat();
-          return {
-            productId: item.product.id,
-            name: item.product.name,
-            quantity: item.quantity,
-            price: item.finalPrice,
-            addons: flatAddons.map(opt => ({
-              id: opt.id,
-              name: opt.name,
-              price: opt.price
-            }))
-          };
-        }),
+        deliveryFee: isPickup ? 0 : (deliveryFee || 0),
+        items: formattedItems,
         subtotal: total,
       });
 
       setStep("SUCCESS");
       onClearCart();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro ao criar pedido:", err);
-      alert("Erro ao enviar o pedido. Tente novamente.");
+      // Se o erro for a mensagem específica que enviamos do servidor, exibe ela
+      if (err.message && err.message.includes("retiradas no local no momento")) {
+        alert(err.message);
+      } else {
+        alert("Erro ao enviar o pedido. Tente novamente.");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -371,112 +398,103 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
               </div>
 
               <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginTop: "1rem" }}>Entrega</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", gridColumn: "1 / -1" }}>
-                  <label className="label">CEP</label>
-                  <input type="text" className="input-field" required value={cep} onChange={handleCepChange} placeholder="00000-000" style={isBlocked ? { borderColor: "var(--error)" } : {}} />
-                  {isLoadingCep && <span style={{ fontSize: "0.8rem", color: "var(--primary)" }}>Buscando endereço...</span>}
-                  {cepError && (
-                    <div style={{ fontSize: "0.85rem", color: "var(--error)", backgroundColor: "var(--error-light)", padding: "0.75rem 1rem", borderRadius: "var(--radius-md)", fontWeight: 500 }}>
-                      ⚠️ {cepError}
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", gridColumn: "1 / -1" }}>
-                  <label className="label">Rua</label>
-                  <input type="text" className="input-field" required value={street} onChange={handleAddressFieldChange(setStreet)} placeholder="Nome da rua" />
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  <label className="label">Número</label>
-                  <input id="address-number" type="text" className="input-field" required value={number} onChange={handleAddressFieldChange(setNumber)} placeholder="Ex: 123" />
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  <label className="label">Complemento</label>
-                  <input type="text" className="input-field" value={complement} onChange={e => setComplement(e.target.value)} maxLength={50} placeholder="Apto, Casa 2..." />
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", gridColumn: "1 / -1" }}>
-                  <label className="label">Bairro</label>
-                  <input type="text" className="input-field" required value={neighborhood} onChange={handleAddressFieldChange(setNeighborhood)} placeholder="Seu bairro" />
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  <label className="label">Cidade</label>
-                  <input type="text" className="input-field" required value={city} onChange={handleAddressFieldChange(setCity)} />
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  <label className="label">Estado (UF)</label>
-                  <input type="text" className="input-field" required value={state} onChange={handleAddressFieldChange(setState)} maxLength={2} />
-                </div>
-              </div>
-
-              {/* UBER QUOTE BUTTON */}
-              {store.uberDirectEnabled && !isBlocked && deliveryFee === null && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.5rem" }}>
-                  <button
-                    type="button"
-                    onClick={calculateUberQuote}
-                    disabled={isQuoting || !cep || !street || !number}
-                    className="btn-primary"
-                    style={{ padding: "0.75rem", display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem", opacity: (isQuoting || !cep || !street || !number) ? 0.5 : 1 }}
-                  >
-                    {isQuoting ? "Calculando..." : "Calcular Valor da Entrega"}
-                  </button>
-                  {quoteError && <span style={{ color: "var(--error)", fontSize: "0.85rem", textAlign: "center" }}>⚠️ {quoteError}</span>}
+              
+              {deliveryConfig.acceptsPickup && (
+                <div style={{ display: "flex", gap: "1rem", marginBottom: "0.5rem" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", padding: "0.5rem", border: `1px solid ${deliveryMethod === "DELIVERY" ? "var(--primary)" : "var(--border)"}`, borderRadius: "var(--radius-md)", flex: 1, backgroundColor: deliveryMethod === "DELIVERY" ? "var(--primary-light)" : "transparent" }}>
+                    <input type="radio" checked={deliveryMethod === "DELIVERY"} onChange={() => setDeliveryMethod("DELIVERY")} style={{ accentColor: "var(--primary)" }} />
+                    <span style={{ fontWeight: deliveryMethod === "DELIVERY" ? 600 : 400 }}>Receber em Casa</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", padding: "0.5rem", border: `1px solid ${deliveryMethod === "PICKUP" ? "var(--primary)" : "var(--border)"}`, borderRadius: "var(--radius-md)", flex: 1, backgroundColor: deliveryMethod === "PICKUP" ? "var(--primary-light)" : "transparent" }}>
+                    <input type="radio" checked={deliveryMethod === "PICKUP"} onChange={() => { setDeliveryMethod("PICKUP"); setDeliveryFee(0); setCepError(""); setIsBlocked(false); }} style={{ accentColor: "var(--primary)" }} />
+                    <span style={{ fontWeight: deliveryMethod === "PICKUP" ? 600 : 400 }}>Retirar na Loja</span>
+                  </label>
                 </div>
               )}
 
-              {/* DELIVERY FEE SUMMARY */}
-              {deliveryFee !== null && !isBlocked && (
-                <div style={{ backgroundColor: "var(--background)", borderRadius: "var(--radius-md)", padding: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem", border: "1px solid var(--border)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--text-secondary)" }}>Subtotal</span>
-                    <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total)}</span>
+              {isPickup ? (
+                <div style={{ padding: "1rem", backgroundColor: "var(--background)", borderRadius: "var(--radius-md)", border: "1px solid var(--border)", fontSize: "0.9rem" }}>
+                  <p style={{ fontWeight: 600, marginBottom: "0.25rem" }}>📍 Endereço de Retirada:</p>
+                  <p>{deliveryConfig.storeAddress.street || 'Endereço não cadastrado'}, {deliveryConfig.storeAddress.number}</p>
+                  <p>{deliveryConfig.storeAddress.neighborhood} - {deliveryConfig.storeAddress.city}/{deliveryConfig.storeAddress.state}</p>
+                  {deliveryConfig.storeAddress.cep && <p>CEP: {deliveryConfig.storeAddress.cep}</p>}
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", gridColumn: "1 / -1" }}>
+                    <label className="label">CEP</label>
+                    <input type="text" className="input-field" required={!isPickup} value={cep} onChange={handleCepChange} placeholder="00000-000" style={isBlocked ? { borderColor: "var(--error)" } : {}} />
+                    {isLoadingCep && <span style={{ fontSize: "0.8rem", color: "var(--primary)" }}>Buscando endereço...</span>}
+                    {cepError && (
+                      <div style={{ fontSize: "0.85rem", color: "var(--error)", backgroundColor: "var(--error-light)", padding: "0.75rem 1rem", borderRadius: "var(--radius-md)", fontWeight: 500 }}>
+                        ⚠️ {cepError}
+                      </div>
+                    )}
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--text-secondary)" }}>Taxa de entrega</span>
-                    <span style={{ color: deliveryFee === 0 ? "var(--success)" : undefined }}>
-                      {deliveryFee === 0 ? "Grátis" : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(deliveryFee)}
-                    </span>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", gridColumn: "1 / -1" }}>
+                    <label className="label">Rua</label>
+                    <input type="text" className="input-field" required={!isPickup} value={street} onChange={handleAddressFieldChange(setStreet)} placeholder="Nome da rua" />
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px dashed var(--border)", paddingTop: "0.5rem", fontWeight: 700 }}>
-                    <span>Total</span>
-                    <span style={{ color: "var(--primary)", fontSize: "1.1rem" }}>
-                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(grandTotal)}
-                    </span>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <label className="label">Número</label>
+                    <input id="address-number" type="text" className="input-field" required={!isPickup} value={number} onChange={handleAddressFieldChange(setNumber)} placeholder="Ex: 123" />
                   </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <label className="label">Complemento</label>
+                    <input type="text" className="input-field" value={complement} onChange={handleAddressFieldChange(setComplement)} placeholder="Apto, Bloco..." />
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <label className="label">Bairro</label>
+                    <input type="text" className="input-field" required={!isPickup} value={neighborhood} onChange={handleAddressFieldChange(setNeighborhood)} placeholder="Bairro" />
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <label className="label">Cidade</label>
+                    <input type="text" className="input-field" required={!isPickup} value={city} onChange={handleAddressFieldChange(setCity)} placeholder="Cidade" readOnly />
+                  </div>
+
                   {store.uberDirectEnabled && (
-                    <div style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "var(--text-tertiary)", textAlign: "center", fontStyle: "italic" }}>
-                      * O valor da entrega pode sofrer alteração devido ao tempo da cotação e até que o pedido fique pronto.
+                    <div style={{ gridColumn: "1 / -1", marginTop: "0.5rem" }}>
+                      <button 
+                        type="button"
+                        onClick={handleCalculateUberFee}
+                        disabled={!cep || !street || !number || isQuoting || isBlocked}
+                        className="btn-primary"
+                        style={{ width: "100%", padding: "0.75rem", backgroundColor: "black", color: "white", borderRadius: "var(--radius-md)" }}
+                      >
+                        {isQuoting ? "Calculando..." : deliveryFee !== null ? "Recalcular Entrega" : "Calcular Entrega (Uber)"}
+                      </button>
+                      {quoteError && <div style={{ color: "var(--error)", fontSize: "0.85rem", marginTop: "0.5rem" }}>{quoteError}</div>}
                     </div>
                   )}
                 </div>
               )}
 
-              <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginTop: "1rem" }}>Observações</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                <label className="label">Algum detalhe adicional para o pedido?</label>
-                <textarea className="input-field" value={observation} onChange={e => setObservation(e.target.value)} maxLength={200} placeholder="Ex: Tirar cebola do hambúrguer, maionese à parte, etc." rows={2} />
-                <span style={{ fontSize: "0.7rem", color: observation.length >= 180 ? "var(--error)" : "var(--text-tertiary)", textAlign: "right" }}>{observation.length}/200</span>
-              </div>
+              <div style={{ borderTop: "1px dashed var(--border)", margin: "0.5rem 0" }}></div>
 
-              <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginTop: "1rem" }}>Pagamento</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                <select className="input-field" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-                  <option value="PIX">PIX (Chave na entrega)</option>
-                  <option value="CARD">Cartão (Máquininha)</option>
-                  <option value="CASH">Dinheiro</option>
-                </select>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.9rem", color: "var(--text-secondary)" }}>
+                <span>Subtotal</span>
+                <span>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total)}</span>
               </div>
-
-              {paymentMethod === "CASH" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  <label className="label">Troco para quanto?</label>
-                  <input type="text" className="input-field" value={changeFor} onChange={e => setChangeFor(e.target.value)} placeholder="Ex: 50,00 (ou deixe em branco se não precisar)" />
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.9rem", color: "var(--text-secondary)" }}>
+                <span>Taxa de Entrega</span>
+                <span>
+                  {isPickup ? "Grátis" : deliveryFee === null ? "A calcular" : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(deliveryFee)}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "1.2rem", fontWeight: 700, color: "var(--text-primary)", marginTop: "0.5rem" }}>
+                <span>Total</span>
+                <span style={{ color: "var(--primary)", fontSize: "1.1rem" }}>
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(grandTotal)}
+                </span>
+              </div>
+              {store.uberDirectEnabled && !isPickup && (
+                <div style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "var(--text-tertiary)", textAlign: "center", fontStyle: "italic" }}>
+                  * O valor da entrega pode sofrer alteração devido ao tempo da cotação e até que o pedido fique pronto.
                 </div>
               )}
             </form>
@@ -497,7 +515,7 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
         {step !== "SUCCESS" && (
           <div style={{ padding: "1.5rem", borderTop: "1px solid var(--border)", display: "flex", gap: "1rem" }}>
             {step === "CHECKOUT" && (
-              <button onClick={() => setStep("CART")} className="btn-secondary" style={{ flex: 1 }} disabled={isSubmitting}>Voltar</button>
+              <button type="button" onClick={() => setStep("CART")} className="btn-secondary" style={{ flex: 1 }} disabled={isSubmitting}>Voltar</button>
             )}
 
             {step === "CART" ? (
@@ -505,8 +523,14 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
                 Continuar
               </button>
             ) : (
-              <button type="submit" form="checkout-form" className="btn-primary" style={{ flex: 2, padding: "1rem", opacity: (isBlocked || (store.uberDirectEnabled && deliveryFee === null)) ? 0.5 : 1 }} disabled={isSubmitting || isBlocked || (store.uberDirectEnabled && deliveryFee === null)}>
-                {isSubmitting ? "Enviando..." : isBlocked ? "Entrega indisponível" : (store.uberDirectEnabled && deliveryFee === null) ? "Calcule a entrega primeiro" : "Confirmar Pedido"}
+              <button 
+                type="submit" 
+                form="checkout-form"
+                disabled={isSubmitting || (!isPickup && isBlocked) || (!isPickup && store.uberDirectEnabled && deliveryFee === null)} 
+                className="btn-primary" 
+                style={{ flex: 2, padding: "1rem" }}
+              >
+                {isSubmitting ? "Enviando..." : "Confirmar Pedido"}
               </button>
             )}
           </div>

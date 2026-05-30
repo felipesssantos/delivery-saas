@@ -28,6 +28,15 @@ export default async function StorePage({ params }: { params: Promise<{ slug: st
   // Build a simple config object to pass to the client
   const deliveryConfig = {
     baseDeliveryFee: store.baseDeliveryFee,
+    acceptsPickup: store.acceptsPickup,
+    storeAddress: {
+      street: store.storeStreet || '',
+      number: store.storeNumber || '',
+      neighborhood: store.storeNeighborhood || '',
+      city: store.storeCity || '',
+      state: store.storeState || '',
+      cep: store.storeCep || ''
+    },
     cities: deliveryCities.map(c => ({
       name: c.name.toLowerCase(),
       blacklistedNeighborhoods: c.blacklistedNeighborhoods.map(n => n.name.toLowerCase()),

@@ -12,6 +12,7 @@ type StoreData = {
   openStatus: boolean;
   welcomeMessage: string | null;
   uberDirectEnabled: boolean;
+  acceptsPickup: boolean;
   storeStreet: string | null;
   storeNumber: string | null;
   storeNeighborhood: string | null;
@@ -24,6 +25,7 @@ export default function SettingsClient({ store }: { store: StoreData }) {
   const [isPending, startTransition] = useTransition();
   const [isOpen, setIsOpen] = useState(store.openStatus);
   const [uberEnabled, setUberEnabled] = useState(store.uberDirectEnabled);
+  const [pickupEnabled, setPickupEnabled] = useState(store.acceptsPickup || false);
   const [message, setMessage] = useState("");
 
   const handleToggleStatus = async () => {
@@ -56,6 +58,20 @@ export default function SettingsClient({ store }: { store: StoreData }) {
         await updateUberDirect(newStatus);
       } catch {
         setUberEnabled(!newStatus); // revert
+      }
+    });
+  };
+
+  const handleTogglePickup = async () => {
+    const newStatus = !pickupEnabled;
+    setPickupEnabled(newStatus);
+    startTransition(async () => {
+      try {
+        const formData = new FormData();
+        formData.append('acceptsPickupToggle', newStatus ? 'true' : 'false');
+        await updateStoreSettings(formData);
+      } catch {
+        setPickupEnabled(!newStatus); // revert on error
       }
     });
   };
@@ -98,7 +114,22 @@ export default function SettingsClient({ store }: { store: StoreData }) {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="card">
+      <div className={styles.switchContainer} onClick={handleTogglePickup} style={{ cursor: 'pointer', marginTop: '1rem', border: '1px solid var(--border)', padding: '1rem', borderRadius: 'var(--radius-lg)' }}>
+        <div className={styles.switchText}>
+          <h3>Aceitar Retirada no Local</h3>
+          <p>Permita que o cliente busque o pedido na sua loja, não cobrando taxa de entrega.</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <span style={{ fontWeight: 600, fontSize: '0.9rem', color: pickupEnabled ? 'var(--success)' : 'var(--text-secondary)' }}>
+            {pickupEnabled ? "Ativo" : "Inativo"}
+          </span>
+          <div className={`${styles.toggleSwitch} ${pickupEnabled ? styles.active : ''}`}>
+            <div className={styles.toggleKnob} />
+          </div>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="card" style={{ marginTop: "1.5rem" }}>
         <h3 className={styles.cardTitle}>Informações Básicas</h3>
         
         {message && (

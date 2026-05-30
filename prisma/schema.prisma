@@ -93,6 +93,9 @@ model Store {
   
   // Uber Direct
   uberDirectEnabled  Boolean  @default(false)
+
+  // Retirada no Local
+  acceptsPickup      Boolean  @default(false)
   
   // Endereço da loja (pickup para Uber Direct)
   storeStreet        String?
@@ -331,15 +334,16 @@ model Order {
   status          OrderStatus @default(PENDING)
   totalAmount     Float       // Valor total = subtotal + taxa de entrega
   deliveryFee     Float       @default(0)
+  deliveryMethod  String      @default("DELIVERY") // "DELIVERY" ou "PICKUP"
   
   // Endereço de entrega
-  cep             String
-  street          String
-  number          String
-  neighborhood    String
+  cep             String?
+  street          String?
+  number          String?
+  neighborhood    String?
   complement      String?
-  city            String
-  state           String
+  city            String?
+  state           String?
   
   // Pagamento
   paymentMethod   String      // "CASH", "PIX", "CARD"

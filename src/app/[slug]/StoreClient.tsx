@@ -46,6 +46,15 @@ export type CartItem = {
 
 export type DeliveryConfig = {
   baseDeliveryFee: number;
+  acceptsPickup: boolean;
+  storeAddress: {
+    street: string;
+    number: string;
+    neighborhood: string;
+    city: string;
+    state: string;
+    cep: string;
+  };
   cities: { name: string; blacklistedNeighborhoods: string[] }[];
 };
 

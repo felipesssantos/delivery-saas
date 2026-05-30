@@ -32,7 +32,8 @@ export async function GET(request: Request) {
     const lastOrder = await prisma.order.findFirst({
       where: {
         customerId: customer.id,
-        storeId: storeId
+        storeId: storeId,
+        deliveryMethod: "DELIVERY" // Garantir que só puxa pedidos com endereço válido
       },
       orderBy: {
         createdAt: 'desc'
@@ -47,13 +48,13 @@ export async function GET(request: Request) {
       found: true,
       name: customer.name,
       address: {
-        cep: lastOrder.cep,
-        street: lastOrder.street,
-        number: lastOrder.number,
+        cep: lastOrder.cep || '',
+        street: lastOrder.street || '',
+        number: lastOrder.number || '',
         complement: lastOrder.complement || '',
-        neighborhood: lastOrder.neighborhood,
-        city: lastOrder.city,
-        state: lastOrder.state
+        neighborhood: lastOrder.neighborhood || '',
+        city: lastOrder.city || '',
+        state: lastOrder.state || ''
       }
     });
   } catch (error) {
