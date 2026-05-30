@@ -461,7 +461,7 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
                     <div style={{ gridColumn: "1 / -1", marginTop: "0.5rem" }}>
                       <button 
                         type="button"
-                        onClick={handleCalculateUberFee}
+                        onClick={calculateUberQuote}
                         disabled={!cep || !street || !number || isQuoting || isBlocked}
                         className="btn-primary"
                         style={{ width: "100%", padding: "0.75rem", backgroundColor: "black", color: "white", borderRadius: "var(--radius-md)" }}
