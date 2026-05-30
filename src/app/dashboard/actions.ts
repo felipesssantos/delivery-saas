@@ -9,12 +9,17 @@ const WA_URL = process.env.WHATSAPP_SERVICE_URL || "http://localhost:3001";
 const API_SECRET = process.env.API_SECRET || "";
 
 // Helper to send WhatsApp message (fire-and-forget)
-async function sendWhatsApp(storeId: string, toPhone: string, message: string) {
+async function sendWhatsApp(
+  storeId: string,
+  toPhone: string,
+  message: string,
+  location?: { latitude: number; longitude: number; name?: string; address?: string }
+) {
   try {
     await fetch(`${WA_URL}/api/send-message`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storeId, toPhone, message, secret: API_SECRET }),
+      body: JSON.stringify({ storeId, toPhone, message, location, secret: API_SECRET }),
     });
   } catch (err) {
     console.error("WhatsApp send failed:", err);
@@ -38,7 +43,21 @@ export async function updateOrderStatus(orderId: string, status: string) {
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { customer: true, store: { select: { name: true } } },
+    include: {
+      customer: true,
+      store: {
+        select: {
+          name: true,
+          storeStreet: true,
+          storeNumber: true,
+          storeNeighborhood: true,
+          storeCity: true,
+          storeState: true,
+          storeLatitude: true,
+          storeLongitude: true,
+        },
+      },
+    },
   });
   if (order?.storeId !== storeId) throw new Error("Não autorizado");
 
@@ -47,11 +66,39 @@ export async function updateOrderStatus(orderId: string, status: string) {
     data: { status: status as any },
   });
 
-  const statusMsg = STATUS_MESSAGES[status];
+  let statusMsg = STATUS_MESSAGES[status];
+
+  let locationPayload: { latitude: number, longitude: number, name?: string, address?: string } | undefined = undefined;
+
+  // Customizar mensagem se o pedido for de retirada
+  if (order.deliveryMethod === "PICKUP") {
+    if (status === "READY") {
+      let mapsLink = "";
+      if (order.store.storeStreet && order.store.storeCity) {
+        const storeAddr = `${order.store.storeStreet}, ${order.store.storeNumber || ""}, ${order.store.storeNeighborhood || ""}, ${order.store.storeCity} - ${order.store.storeState || ""}`.trim().replace(/,\s*,/g, ",");
+        mapsLink = `\n\n📍 *Como chegar:*\nhttps://www.google.com/maps/search/?api=1&query=${encodeURIComponent(storeAddr)}`;
+        
+        // Se a loja tiver latitude/longitude cadastrada no banco, enviaremos como Location nativa
+        if (order.store.storeLatitude && order.store.storeLongitude) {
+          locationPayload = {
+            latitude: order.store.storeLatitude,
+            longitude: order.store.storeLongitude,
+            name: order.store.name,
+            address: storeAddr
+          };
+          mapsLink = ""; // Limpa o link de texto já que vai o mapa nativo
+        }
+      }
+      statusMsg = `🛍️ Seu pedido está *pronto para retirada*! Você já pode vir buscar no balcão.${mapsLink}`;
+    } else if (status === "DELIVERED") {
+      statusMsg = "🎉 Seu pedido foi *retirado*! Obrigado pela preferência! ❤️";
+    }
+  }
+
   if (statusMsg && order.customer.phone) {
     const code = order.id.slice(-6).toUpperCase();
     const msg = `📋 *Pedido #${code} — ${order.store.name}*\n\n${statusMsg}`;
-    sendWhatsApp(storeId, order.customer.phone, msg);
+    sendWhatsApp(storeId, order.customer.phone, msg, locationPayload);
   }
 
   revalidatePath("/dashboard");
@@ -87,7 +134,27 @@ export async function assignCourierAndDispatch(orderId: string, courierId: strin
   courierMsg += `📦 *Itens:*\n${itemsText}\n\n`;
   courierMsg += `📍 *Endereço:*\n${order.street}, ${order.number}`;
   if (order.complement) courierMsg += ` - ${order.complement}`;
-  courierMsg += `\n${order.neighborhood}, ${order.city}/${order.state}\nCEP: ${order.cep}\n\n`;
+  courierMsg += `\n${order.neighborhood}, ${order.city}/${order.state}\nCEP: ${order.cep}\n`;
+  
+  let locationPayload: { latitude: number, longitude: number, name?: string, address?: string } | undefined = undefined;
+
+  const customerAddr = `${order.street}, ${order.number || ''}, ${order.neighborhood || ''}, ${order.city} - ${order.state || ''}`.trim().replace(/,\s*,/g, ',');
+
+  // Enviar Location Nativa para o motoboy se a latitude/longitude do cliente estiver disponível no pedido
+  if (order.latitude && order.longitude) {
+    locationPayload = {
+      latitude: order.latitude,
+      longitude: order.longitude,
+      name: order.customer.name,
+      address: customerAddr
+    };
+  } else if (order.street && order.city) {
+    // Fallback de texto se a coordenada falhou/não existe
+    courierMsg += `🗺️ *Navegar no Maps:*\nhttps://www.google.com/maps/search/?api=1&query=${encodeURIComponent(customerAddr)}\n\n`;
+  } else {
+    courierMsg += `\n`;
+  }
+
   courierMsg += `👤 *Cliente:* ${order.customer.name}\n📱 ${order.customer.phone}\n\n`;
   courierMsg += `💳 *Pagamento:* ${order.paymentMethod}`;
   if (order.paymentMethod === "CASH" && order.changeFor) {
@@ -95,7 +162,7 @@ export async function assignCourierAndDispatch(orderId: string, courierId: strin
   }
   courierMsg += `\n💰 *Total:* R$ ${order.totalAmount.toFixed(2).replace(".", ",")}`;
 
-  sendWhatsApp(storeId, courier.phone, courierMsg);
+  sendWhatsApp(storeId, courier.phone, courierMsg, locationPayload);
 
   const customerMsg = `📋 *Pedido #${code} — ${order.store.name}*\n\n🏍️ Seu pedido *saiu para entrega* com *${courier.name}*! Fique de olho!`;
   sendWhatsApp(storeId, order.customer.phone, customerMsg);

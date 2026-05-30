@@ -19,6 +19,8 @@ type StoreData = {
   storeCity: string | null;
   storeState: string | null;
   storeCep: string | null;
+  storeLatitude: string | null;
+  storeLongitude: string | null;
 };
 
 export default function SettingsClient({ store }: { store: StoreData }) {
@@ -251,9 +253,25 @@ export default function SettingsClient({ store }: { store: StoreData }) {
               </div>
               <div>
                 <label className="label">CEP</label>
-                <input name="storeCep" defaultValue={store.storeCep || ""} className="input-field" placeholder="40000-000" required />
+                <input name="storeCep" defaultValue={store.storeCep || ""} className="input-field" placeholder="00000-000" />
               </div>
             </div>
+            
+            <h4 style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "0.5rem", marginTop: "1rem" }}>Coordenadas do Mapa (Opcional)</h4>
+            <p style={{ color: "var(--text-secondary)", fontSize: "0.8rem", marginBottom: "1rem" }}>
+              Preencha para enviar a localização nativa do WhatsApp (balão de mapa) para seus clientes e entregadores.
+            </p>
+            <div className={styles.formGrid}>
+              <div>
+                <label className="label">Latitude</label>
+                <input name="storeLatitude" defaultValue={store.storeLatitude || ""} type="number" step="any" className="input-field" placeholder="Ex: -12.9777" />
+              </div>
+              <div>
+                <label className="label">Longitude</label>
+                <input name="storeLongitude" defaultValue={store.storeLongitude || ""} type="number" step="any" className="input-field" placeholder="Ex: -38.5016" />
+              </div>
+            </div>
+
             <div className={styles.footer}>
               <button type="submit" className="btn-primary" disabled={isPending}>
                 {isPending ? "Salvando..." : "Salvar Endereço"}

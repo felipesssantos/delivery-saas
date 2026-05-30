@@ -34,6 +34,8 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
   const [neighborhood, setNeighborhood] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [isLoadingCep, setIsLoadingCep] = useState(false);
   const [cepError, setCepError] = useState("");
   const [isBlocked, setIsBlocked] = useState(false);
@@ -60,6 +62,8 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
         if (parsed.neighborhood) setNeighborhood(parsed.neighborhood);
         if (parsed.city) setCity(parsed.city);
         if (parsed.state) setState(parsed.state);
+        if (parsed.latitude) setLatitude(parsed.latitude);
+        if (parsed.longitude) setLongitude(parsed.longitude);
       } catch (e) {
         console.error("Failed to parse saved profile", e);
       }
@@ -108,6 +112,22 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
           setNeighborhood(data.bairro || "");
           setCity(data.localidade || "");
           setState(data.uf || "");
+
+          // Buscar Coordenadas Geográficas usando API do Nominatim/OSM
+          try {
+            const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(data.logradouro + ", " + data.localidade + ", " + data.uf)}`;
+            const geoRes = await fetch(geocodeUrl, { headers: { 'Accept-Language': 'pt-BR' } });
+            const geoData = await geoRes.json();
+            if (geoData && geoData.length > 0) {
+              setLatitude(parseFloat(geoData[0].lat));
+              setLongitude(parseFloat(geoData[0].lon));
+            } else {
+              setLatitude(null);
+              setLongitude(null);
+            }
+          } catch (e) {
+            console.error("Erro ao buscar coordenadas via OSM:", e);
+          }
 
           validateCity(data.localidade, data.bairro);
         }
@@ -199,6 +219,8 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
         neighborhood: isPickup ? null : neighborhood,
         city: isPickup ? null : city,
         state: isPickup ? null : state,
+        latitude: isPickup ? null : latitude,
+        longitude: isPickup ? null : longitude,
         paymentMethod,
         changeFor: changeFor ? parseFloat(changeFor.replace(",", ".")) : null,
         observation,
@@ -247,6 +269,8 @@ export default function CartModal({ store, cart, total, onClose, onUpdateQuantit
           setNeighborhood(data.address.neighborhood);
           setCity(data.address.city);
           setState(data.address.state);
+          if (data.address.latitude) setLatitude(data.address.latitude);
+          if (data.address.longitude) setLongitude(data.address.longitude);
 
           // Revalida a área de entrega automaticamente
           validateCity(data.address.city, data.address.neighborhood);

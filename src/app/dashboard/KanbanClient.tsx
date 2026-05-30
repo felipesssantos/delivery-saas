@@ -137,6 +137,25 @@ export default function KanbanClient({
 
     // If moving from READY to DISPATCHED, show dispatch modal
     if (currentStatus === "READY") {
+      const order = orders.find(o => o.id === orderId);
+      
+      // Se for pedido para Retirada (não tem CEP ou método é PICKUP),
+      // pula o modal de motoboy e marca como ENTREGUE direto.
+      if (order && !order.cep) {
+        const confirmPickup = confirm("O cliente já retirou este pedido?");
+        if (!confirmPickup) return;
+        
+        setLoadingOrderId(orderId);
+        try {
+          await updateOrderStatus(orderId, "DELIVERED");
+        } catch {
+          alert("Erro ao atualizar status.");
+        } finally {
+          setLoadingOrderId(null);
+        }
+        return;
+      }
+
       setDispatchOrderId(orderId);
       setSelectedCourierId("");
       setDispatchMode("courier");
@@ -480,7 +499,7 @@ export default function KanbanClient({
                               disabled={loadingOrderId === order.id}
                               style={{ flex: 1, padding: "0.5rem", borderRadius: "var(--radius-md)", backgroundColor: col.color, color: "white", border: "none", fontWeight: 600, fontSize: "0.8rem", cursor: "pointer", opacity: loadingOrderId === order.id ? 0.6 : 1 }}
                             >
-                              {loadingOrderId === order.id ? "..." : col.nextLabel}
+                              {loadingOrderId === order.id ? "..." : (col.status === "READY" && !order.cep ? "Entregar Cliente" : col.nextLabel)}
                             </button>
                           )}
                           {col.status !== "DELIVERED" && (

@@ -52,7 +52,7 @@ io.on('connection', (socket) => {
 
 // REST API for Next.js to send messages (e.g. order updates)
 app.post('/api/send-message', async (req, res) => {
-  const { storeId, toPhone, message, secret } = req.body;
+  const { storeId, toPhone, message, location, secret } = req.body;
 
   // Simple auth to ensure only Next.js backend can call this
   if (secret !== process.env.API_SECRET) {
@@ -60,7 +60,7 @@ app.post('/api/send-message', async (req, res) => {
   }
 
   try {
-    await manager.sendMessage(storeId, toPhone, message);
+    await manager.sendMessage(storeId, toPhone, message, location);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

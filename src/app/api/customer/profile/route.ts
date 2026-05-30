@@ -54,7 +54,9 @@ export async function GET(request: Request) {
         complement: lastOrder.complement || '',
         neighborhood: lastOrder.neighborhood || '',
         city: lastOrder.city || '',
-        state: lastOrder.state || ''
+        state: lastOrder.state || '',
+        latitude: lastOrder.latitude,
+        longitude: lastOrder.longitude
       }
     });
   } catch (error) {

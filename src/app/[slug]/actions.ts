@@ -14,6 +14,8 @@ type OrderInput = {
   neighborhood?: string | null;
   city?: string | null;
   state?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   paymentMethod: string;
   changeFor: string | null;
   observation: string;
@@ -89,6 +91,8 @@ export async function createOrder(input: OrderInput) {
       complement: isPickup ? null : input.complement,
       city: isPickup ? null : input.city,
       state: isPickup ? null : input.state,
+      latitude: isPickup ? null : input.latitude,
+      longitude: isPickup ? null : input.longitude,
       paymentMethod: input.paymentMethod,
       changeFor: input.paymentMethod === "CASH" && input.changeFor 
         ? parseFloat(input.changeFor.replace(",", ".")) 

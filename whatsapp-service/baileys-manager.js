@@ -152,7 +152,7 @@ export default class BaileysManager {
     return 'connecting';
   }
 
-  async sendMessage(storeId, toPhone, message) {
+  async sendMessage(storeId, toPhone, message, location = null) {
     const sock = this.sessions.get(storeId);
     if (!sock) throw new Error("WhatsApp não está conectado para esta loja");
 
@@ -192,9 +192,35 @@ export default class BaileysManager {
     
     // Usar a fila do chatbot para enviar, se disponível
     if (this.chatbot && this.chatbot.queue) {
-      await this.chatbot.queue.enqueue(sock, storeId, jid, { text: message });
+      // Se a mensagem contiver texto, enviamos primeiro o texto
+      if (message) {
+        await this.chatbot.queue.enqueue(sock, storeId, jid, { text: message });
+      }
+      // Se houver uma localização nativa
+      if (location && location.latitude && location.longitude) {
+        await this.chatbot.queue.enqueue(sock, storeId, jid, { 
+          location: { 
+            degreesLatitude: location.latitude, 
+            degreesLongitude: location.longitude,
+            name: location.name || "Local",
+            address: location.address || ""
+          } 
+        });
+      }
     } else {
-      await sock.sendMessage(jid, { text: message });
+      if (message) {
+        await sock.sendMessage(jid, { text: message });
+      }
+      if (location && location.latitude && location.longitude) {
+        await sock.sendMessage(jid, { 
+          location: { 
+            degreesLatitude: location.latitude, 
+            degreesLongitude: location.longitude,
+            name: location.name || "Local",
+            address: location.address || ""
+          } 
+        });
+      }
     }
   }
 

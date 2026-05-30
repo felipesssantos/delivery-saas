@@ -114,6 +114,9 @@ export async function updateStoreAddress(formData: FormData) {
   const storeId = (session?.user as any)?.storeId;
   if (!storeId) throw new Error("Não autorizado");
 
+  const latStr = formData.get("storeLatitude") as string;
+  const lonStr = formData.get("storeLongitude") as string;
+
   await prisma.store.update({
     where: { id: storeId },
     data: {
@@ -123,6 +126,8 @@ export async function updateStoreAddress(formData: FormData) {
       storeCity: formData.get("storeCity") as string,
       storeState: formData.get("storeState") as string,
       storeCep: formData.get("storeCep") as string,
+      storeLatitude: latStr ? parseFloat(latStr) : null,
+      storeLongitude: lonStr ? parseFloat(lonStr) : null,
     },
   });
 

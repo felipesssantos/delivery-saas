@@ -28,6 +28,8 @@ export default async function SettingsPage() {
       storeCity: true,
       storeState: true,
       storeCep: true,
+      storeLatitude: true,
+      storeLongitude: true,
     },
   });
 
